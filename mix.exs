@@ -14,7 +14,7 @@ defmodule Bamboo.NaiveSMTP.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger, :crypto, :asn1, :public_key, :ssl]
+      extra_applications: [:logger, :ssl]
     ]
   end
 
@@ -22,7 +22,8 @@ defmodule Bamboo.NaiveSMTP.MixProject do
   defp deps do
     [
       {:bamboo, "~> 2.3"},
-      {:castore, "~> 1.0"}
+      {:castore, "~> 1.0"},
+      {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false}
     ]
   end
 end

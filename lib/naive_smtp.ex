@@ -6,6 +6,8 @@ defmodule NaiveSMTP do
   import Kernel, except: [send: 2]
   require Logger
 
+  @dialyzer :no_improper_lists
+
   @type conn :: :gen_tcp.socket() | :ssl.sslsocket()
 
   @spec connect(:inet.socket_address() | :inet.hostname(), Keyword.t()) ::
@@ -157,7 +159,8 @@ defmodule NaiveSMTP do
 
   # smtp commands
 
-  defp ehlo(conn, hostname, timeout) when is_binary(hostname) do
+  @doc false
+  def ehlo(conn, hostname, timeout) when is_binary(hostname) do
     with {:ok, [_ | extensions]} <- communicate(conn, ["EHLO ", hostname | "\r\n"], 250, timeout) do
       extensions =
         Enum.map(extensions, fn extension ->
@@ -171,11 +174,13 @@ defmodule NaiveSMTP do
     end
   end
 
-  defp helo(conn, hostname, timeout) when is_binary(hostname) do
+  @doc false
+  def helo(conn, hostname, timeout) when is_binary(hostname) do
     communicate(conn, ["HELO ", hostname | "\r\n"], 250, timeout)
   end
 
-  defp starttls(conn, timeout) when is_port(conn) do
+  @doc false
+  def starttls(conn, timeout) when is_port(conn) do
     with {:ok, _reply} <- communicate(conn, "STARTTLS\r\n", 220, timeout) do
       # TODO verify
       ssl_opts = [cacertfile: CAStore.file_path(), verify: :verify_none]
@@ -183,13 +188,15 @@ defmodule NaiveSMTP do
     end
   end
 
-  defp starttls(_conn, _timeout), do: {:error, :already_ssl}
+  def starttls(_conn, _timeout), do: {:error, :already_ssl}
 
-  defp mail(conn, address, timeout) do
+  @doc false
+  def mail(conn, address, timeout) do
     communicate(conn, ["MAIL FROM: ", quoteaddr(address) | "\r\n"], 250, timeout)
   end
 
-  defp rcpt(conn, [address | addresses], timeout) do
+  @doc false
+  def rcpt(conn, [address | addresses], timeout) do
     :ok = __send(conn, ["RCPT TO: ", quoteaddr(address) | "\r\n"])
 
     case recv(conn, timeout) do
@@ -204,15 +211,17 @@ defmodule NaiveSMTP do
     end
   end
 
-  defp rcpt(_conn, [], _timeout), do: :ok
+  def rcpt(_conn, [], _timeout), do: :ok
 
-  defp data(conn, message, timeout) do
+  @doc false
+  def data(conn, message, timeout) do
     with {:ok, _} <- communicate(conn, "DATA\r\n", 354, timeout),
          {:ok = ok, [receipt]} <- communicate(conn, [message | "\r\n.\r\n"], 250, timeout),
          do: {ok, receipt}
   end
 
-  defp vrfy(conn, address, timeout) do
+  @doc false
+  def vrfy(conn, address, timeout) do
     case communicate(conn, ["VRFY ", quoteaddr(address) | "\r\n"], 250, timeout) do
       {:ok, [_]} -> true
       {:error, :user_not_local} -> false
@@ -221,15 +230,18 @@ defmodule NaiveSMTP do
     end
   end
 
-  defp quit(conn, timeout) do
+  @doc false
+  def quit(conn, timeout) do
     with {:ok = ok, _reply} <- communicate(conn, "QUIT\r\n", 221, timeout), do: ok
   end
 
-  defp rset(conn, timeout) do
+  @doc false
+  def rset(conn, timeout) do
     with {:ok = ok, _reply} <- communicate(conn, "RSET\r\n", 250, timeout), do: ok
   end
 
-  defp noop(conn, timeout) do
+  @doc false
+  def noop(conn, timeout) do
     with {:ok = ok, _reply} <- communicate(conn, "NOOP\r\n", 250, timeout), do: ok
   end
 
@@ -312,11 +324,6 @@ defmodule NaiveSMTP do
       <<_::size(but_last)-bytes, ?>>> -> address
       _ -> [?<, address, ?>]
     end
-  end
-
-  @doc false
-  def recipient_host(recipient) do
-    [_, host] = String.split(recipient, "@")
   end
 
   require Record

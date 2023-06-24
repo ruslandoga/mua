@@ -7,11 +7,17 @@ defmodule Bamboo.NaiveSMTP do
 
   @impl true
   def deliver(email, config) do
-    sender = get_sender(email)
-    recipients = get_recipients(email)
-    message = get_message(email)
+    email = %{
+      sender: email.from,
+      recipients: [email.to],
+      headers: [],
+      subject: email.subject,
+      message: email.text_body
+    }
 
-    NaiveSMTP.send_one_off(sender, recipients, message, config)
+    # TODO
+    [result] = NaiveSMTP.send(email, config)
+    result
   end
 
   @impl true
@@ -20,16 +26,16 @@ defmodule Bamboo.NaiveSMTP do
   @impl true
   def supports_attachments?, do: false
 
-  @doc false
-  def get_sender(%Bamboo.Email{from: from}) do
-    from
-  end
+  # @doc false
+  # def get_sender(%Bamboo.Email{from: from}) do
+  #   from
+  # end
 
-  @doc false
-  def get_recipients(%Bamboo.Email{to: to, cc: cc, bcc: bcc}) do
-    [to] ++ cc ++ bcc
-  end
+  # @doc false
+  # def get_recipients(%Bamboo.Email{to: to, cc: cc, bcc: bcc}) do
+  #   [to] ++ cc ++ bcc
+  # end
 
-  def get_message(%Bamboo.Email{}) do
-  end
+  # def get_message(%Bamboo.Email{}) do
+  # end
 end
