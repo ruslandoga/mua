@@ -1,7 +1,9 @@
-defmodule NaiveSMTP do
+defmodule Mua do
   @moduledoc """
   TODO
   """
+
+  # TODO QUIT
 
   import Kernel, except: [send: 2]
   require Logger
@@ -22,8 +24,6 @@ defmodule NaiveSMTP do
     {timeout, opts} = Keyword.pop(opts, :timeout, :timer.seconds(15))
     transport_opts = opts[:transport_opts] || []
     socket_opts = [:binary, active: false, packet: :line] ++ transport_opts
-
-    Logger.debug("connecting to #{inspect(host)} on port 25")
 
     case :gen_tcp.connect(host, 25, socket_opts, timeout) do
       {:ok, conn} ->

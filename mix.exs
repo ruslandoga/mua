@@ -1,9 +1,9 @@
-defmodule Bamboo.NaiveSMTP.MixProject do
+defmodule Mua.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :bamboo_naive_smtp,
+      app: :mua,
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
@@ -21,8 +21,9 @@ defmodule Bamboo.NaiveSMTP.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:bamboo, "~> 2.3"},
       {:castore, "~> 1.0"},
+      {:bamboo, "~> 2.3", optional: true},
+      {:swoosh, "~> 1.11", optional: true},
       {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false}
     ]
   end
