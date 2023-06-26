@@ -22,4 +22,25 @@ defmodule MuaTest do
                message
              )
   end
+
+  # @doc false
+  # def wrap(email, now \\ DateTime.utc_now()) do
+  #   date = Calendar.strftime(now, "%a, %d %b %Y %H:%M:%S %z")
+
+  #   headers = [
+  #     {"Date", date},
+  #     {"From", email.sender},
+  #     {"To", Enum.intersperse(email.recipients, ", ")},
+  #     {"Subject", email.subject}
+  #   ]
+
+  #   headers = :lists.ukeysort(1, email.headers ++ headers)
+  #   headers = for {k, v} <- headers, do: [k, ": ", v, "\r\n"]
+
+  #   {
+  #     email.sender,
+  #     email.recipients,
+  #     [headers, "\r\n" | email.message]
+  #   }
+  # end
 end

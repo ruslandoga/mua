@@ -3,8 +3,6 @@ defmodule Mua do
   TODO
   """
 
-  # TODO QUIT
-
   import Kernel, except: [send: 2]
   require Logger
 
@@ -12,156 +10,156 @@ defmodule Mua do
 
   @type conn :: :gen_tcp.socket() | :ssl.sslsocket()
 
-  @spec connect(:inet.socket_address() | :inet.hostname(), Keyword.t()) ::
-          {:ok, :gen_tcp.socket(), String.t()} | {:error, term}
-  def connect(host, opts \\ []) do
+  @doc """
+  TODO
+  """
+  @spec connect(
+          proto :: :tcp | :ssl,
+          host :: :inet.socket_address() | :inet.hostname() | String.t(),
+          port :: :inet.port_number(),
+          opts :: Keyword.t()
+        ) ::
+          {:ok, conn, String.t()} | {:error, term}
+  def connect(protocol, host, port, opts \\ []) do
     host =
       case host do
         _ when is_binary(host) -> to_charlist(host)
         _ -> host
       end
 
+    # TODO inet6
+
     {timeout, opts} = Keyword.pop(opts, :timeout, :timer.seconds(15))
     transport_opts = opts[:transport_opts] || []
     socket_opts = [:binary, active: false, packet: :line] ++ transport_opts
 
-    case :gen_tcp.connect(host, 25, socket_opts, timeout) do
-      {:ok, conn} ->
-        case recv(conn, timeout) do
-          {:ok, [{220, banner} | _rest]} ->
-            # TODO starttls here?
-            {:ok, conn, banner}
+    result =
+      case protocol do
+        :tcp ->
+          :gen_tcp.connect(host, port, socket_opts, timeout)
 
-          {:ok, [{status, _message} | _rest]} ->
-            {:error, code(status)}
+        :ssl ->
+          # TODO deduplicate
+          socket_opts = [cacertfile: CAStore.file_path(), verify: :verify_none] ++ socket_opts
 
-          {:error, _reason} = error ->
-            error
-        end
+          case :ssl.connect(host, port, socket_opts, timeout) do
+            {:ok, _conn} = ok -> ok
+            {:ok, conn, _extensions} -> {:ok, conn}
+            {:error, _reason} = error -> error
+            {:option_not_a_key_value_tuple, _} = reason -> {:error, reason}
+          end
+      end
 
-      {:error, _reason} = error ->
-        error
-    end
-  end
+    with {:ok, conn} <- result do
+      case recv_all(conn, timeout) do
+        {:ok, [{220, banner} | _rest]} ->
+          {:ok, conn, banner}
 
-  def send(email, opts \\ []) do
-    envelop = wrap(email)
+        {:ok, [{status, _message} | _rest]} ->
+          :ok = close(conn)
+          {:error, code(status)}
 
-    # TODO
-    email.recipients
-    |> Enum.group_by(fn recipient ->
-      [_, host] = String.split(recipient, "@")
-      host
-    end)
-    |> Enum.map(fn {host, _recipients} ->
-      send_any(mxlookup(host), _port = 25, envelop, opts)
-    end)
-  end
-
-  @doc false
-  def wrap(email, now \\ DateTime.utc_now()) do
-    date = Calendar.strftime(now, "%a, %d %b %Y %H:%M:%S %z")
-
-    headers = [
-      {"Date", date},
-      {"From", email.sender},
-      {"To", Enum.intersperse(email.recipients, ", ")},
-      {"Subject", email.subject}
-    ]
-
-    headers = :lists.ukeysort(1, email.headers ++ headers)
-    headers = for {k, v} <- headers, do: [k, ": ", v, "\r\n"]
-
-    {
-      email.sender,
-      email.recipients,
-      [headers, "\r\n" | email.message]
-    }
-  end
-
-  defp send_any([host | hosts], port, envelope, opts) do
-    case send_one(host, port, envelope, opts) do
-      {:ok, _receipt} = ok ->
-        ok
-
-      {:error, reason}
-      when reason in [
-             :service_not_available,
-             :mailbox_unavailable,
-             :local_error,
-             :insufficient_system_storage
-           ] and
-             hosts != [] ->
-        send_any(hosts, port, envelope, opts)
-
-      {:error, _reason} = error ->
-        error
-    end
-  end
-
-  defp send_one(host, _port, envelope, opts) do
-    with {:ok, conn, _banner} <- connect(host, opts) do
-      try do
-        check_and_send(conn, envelope, opts)
-      after
-        disconnect(conn)
+        {:error, _reason} = error ->
+          error
       end
     end
   end
 
-  @doc false
-  def check_and_send(conn, envelop, opts) do
-    case do_check(conn, opts) do
-      {:ok, conn} -> do_send(conn, envelop, opts)
-      {:error, _reason} = error -> error
+  @doc """
+  TODO
+  """
+  @spec close(conn) :: :ok
+  def close(conn) when is_port(conn), do: :gen_tcp.close(conn)
+
+  def close(conn) do
+    case :ssl.close(conn) do
+      :ok = ok ->
+        ok
+
+      {:ok = ok, _port} ->
+        ok
+
+      {:ok = ok, _port, _data} ->
+        ok
+        # TODO
+        # {:error, _reason}
     end
   end
 
-  def disconnect(conn) when is_port(conn), do: :gen_tcp.close(conn)
-  def disconnect(conn), do: :ssl.close(conn)
+  @doc """
+  TODO
+  """
+  @spec send(
+          host :: :inet.socket_address() | :inet.hostname() | String.t(),
+          sender :: String.t(),
+          recipients :: [String.t()],
+          message :: iodata,
+          opts :: Keyword.t()
+        ) :: {:ok, receipt :: String.t()} | {:error, Exception.t()}
+  def send(host, sender, recipients, message, opts \\ []) do
+    hosts = mxlookup(host)
+    send_any(hosts, sender, recipients, message, opts)
+  end
 
-  # helpers
+  defp send_any([host | hosts], sender, recipients, message, opts) do
+    case send_one(host, sender, recipients, message, opts) do
+      {:ok, _receipt} = ok ->
+        ok
 
-  defp do_check(conn, opts) do
-    hostname = opts[:hostname] || guess_fqdn()
+      {:error, _reason} when hosts != [] ->
+        # TODO at least log reason
+        send_any(hosts, sender, recipients, message, opts)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp send_one(host, sender, recipients, message, opts) do
+    port = opts[:port] || 25
+    protocol = opts[:protocol] || :tcp
     timeout = opts[:timeout] || :timer.seconds(15)
 
-    case do_ehlo(conn, hostname, timeout) do
-      {:ok, extensions} -> do_starttls(conn, extensions, opts)
-      {:error, _reason} = error -> error
+    with {:ok, conn, _banner} <- connect(protocol, host, port, opts) do
+      try do
+        hostname = opts[:hostname] || guess_fqdn()
+
+        result =
+          case ehlo(conn, hostname, timeout) do
+            {:ok, extensions} ->
+              if "STARTTLS" in extensions do
+                # TODO opts
+                starttls(conn, timeout)
+              else
+                {:ok, conn}
+              end
+
+            {:error, :unknown_command} ->
+              with :ok <- helo(conn, hostname, timeout) do
+                {:ok, conn}
+              end
+
+            {:error, _reason} = error ->
+              error
+          end
+
+        with {:ok, conn} <- result,
+             :ok <- mail_from(conn, sender, timeout),
+             :ok <- rcpt_to(conn, recipients, timeout),
+             do: data(conn, message, timeout)
+      after
+        quit(conn, timeout)
+        close(conn)
+      end
     end
   end
 
-  defp do_ehlo(conn, hostname, timeout) do
-    case ehlo(conn, hostname, timeout) do
-      {:error, :unknown_command} -> helo(conn, hostname, timeout)
-      {_, _} = result -> result
-    end
-  end
-
-  defp do_starttls(conn, extensions, opts) do
-    timeout = opts[:timeout] || :timer.seconds(15)
-
-    if "STARTTLS" in extensions do
-      starttls(conn, timeout)
-    else
-      {:ok, conn}
-    end
-  end
-
-  defp do_send(conn, {sender, recipients, message}, opts) do
-    timeout = opts[:timeout] || :timer.seconds(15)
-
-    with {:ok, _} <- mail(conn, sender, timeout),
-         :ok <- rcpt(conn, recipients, timeout),
-         do: data(conn, message, timeout)
-  end
-
-  # smtp commands
-
-  @doc false
+  @doc """
+  TODO
+  """
+  @spec ehlo(conn, String.t(), timeout) :: {:ok, [String.t()]} | {:error, Exception.t()}
   def ehlo(conn, hostname, timeout) when is_binary(hostname) do
-    with {:ok, [_ | extensions]} <- communicate(conn, ["EHLO ", hostname | "\r\n"], 250, timeout) do
+    with {:ok, [_ | extensions]} <- comm(conn, ["EHLO ", hostname | "\r\n"], 250, timeout) do
       extensions =
         Enum.map(extensions, fn extension ->
           case String.split(extension, " ") do
@@ -174,107 +172,126 @@ defmodule Mua do
     end
   end
 
-  @doc false
+  @doc """
+  TODO
+  """
+  @spec helo(conn, String.t(), timeout) :: :ok | {:error, Exception.t()}
   def helo(conn, hostname, timeout) when is_binary(hostname) do
-    communicate(conn, ["HELO ", hostname | "\r\n"], 250, timeout)
+    with {:ok = ok, _} <- comm(conn, ["HELO ", hostname | "\r\n"], 250, timeout) do
+      ok
+    end
   end
 
-  @doc false
+  @doc """
+  TODO
+  """
+  @spec starttls(:gen_tcp.socket(), timeout) :: {:ok, :ssl.sslsocket()} | {:error, Exception.t()}
   def starttls(conn, timeout) when is_port(conn) do
-    with {:ok, _reply} <- communicate(conn, "STARTTLS\r\n", 220, timeout) do
+    with {:ok, _reply} <- comm(conn, "STARTTLS\r\n", 220, timeout) do
       # TODO verify
       ssl_opts = [cacertfile: CAStore.file_path(), verify: :verify_none]
       :ssl.connect(conn, ssl_opts, timeout)
     end
   end
 
-  def starttls(_conn, _timeout), do: {:error, :already_ssl}
-
-  @doc false
-  def mail(conn, address, timeout) do
-    communicate(conn, ["MAIL FROM: ", quoteaddr(address) | "\r\n"], 250, timeout)
-  end
-
-  @doc false
-  def rcpt(conn, [address | addresses], timeout) do
-    :ok = __send(conn, ["RCPT TO: ", quoteaddr(address) | "\r\n"])
-
-    case recv(conn, timeout) do
-      {:ok, [{status, _}]} when status in [250, 251] ->
-        rcpt(conn, addresses, timeout)
-
-      {:ok, [{status, _} | _]} ->
-        {:error, code(status)}
-
-      {:error, _reason} = error ->
-        error
+  @doc """
+  TODO
+  """
+  @spec mail_from(conn, String.t(), timeout) :: :ok | {:error, Exception.t()}
+  def mail_from(conn, address, timeout) do
+    with {:ok = ok, _} <- comm(conn, ["MAIL FROM: ", quoteaddr(address) | "\r\n"], 250, timeout) do
+      ok
     end
   end
 
-  def rcpt(_conn, [], _timeout), do: :ok
+  @doc """
+  TODO
+  """
+  @spec rcpt_to(conn, [String.t()], timeout) :: :ok | {:error, Exception.t()}
+  def rcpt_to(conn, [address | addresses], timeout) do
+    with :ok <- send(conn, ["RCPT TO: ", quoteaddr(address) | "\r\n"]) do
+      case recv_all(conn, timeout) do
+        {:ok, [{status, _} | _]} when status in [250, 251] ->
+          rcpt_to(conn, addresses, timeout)
 
-  @doc false
+        {:ok, [{status, _} | _]} ->
+          {:error, code(status)}
+
+        {:error, _reason} = error ->
+          error
+      end
+    end
+  end
+
+  def rcpt_to(_conn, [], _timeout), do: :ok
+
+  @doc """
+  TODO
+  """
+  @spec data(conn, iodata, timeout) :: {:ok, receipt :: String.t()} | {:error, Exception.t()}
   def data(conn, message, timeout) do
-    with {:ok, _} <- communicate(conn, "DATA\r\n", 354, timeout),
-         {:ok = ok, [receipt]} <- communicate(conn, [message | "\r\n.\r\n"], 250, timeout),
+    with {:ok, _} <- comm(conn, "DATA\r\n", 354, timeout),
+         {:ok = ok, [receipt]} <- comm(conn, [message | "\r\n.\r\n"], 250, timeout),
          do: {ok, receipt}
   end
 
-  @doc false
+  @doc """
+  TODO
+  """
+  @spec vrfy(conn, String.t(), timeout) :: {:ok, boolean} | {:error, Exception.t()}
   def vrfy(conn, address, timeout) do
-    case communicate(conn, ["VRFY ", quoteaddr(address) | "\r\n"], 250, timeout) do
-      {:ok, [_]} -> true
-      {:error, :user_not_local} -> false
-      {:error, :vrfy_failed} -> false
+    case comm(conn, ["VRFY ", quoteaddr(address) | "\r\n"], 250, timeout) do
+      {:ok = ok, [_]} -> {ok, true}
+      {:error, reason} when reason in [:user_not_local, :vrfy_failed] -> {:ok, false}
       {:error, _reason} = error -> error
     end
   end
 
-  @doc false
+  @doc """
+  TODO
+  """
+  @spec quit(conn, timeout) :: :ok | {:error, Exception.t()}
   def quit(conn, timeout) do
-    with {:ok = ok, _reply} <- communicate(conn, "QUIT\r\n", 221, timeout), do: ok
+    with {:ok = ok, _reply} <- comm(conn, "QUIT\r\n", 221, timeout), do: ok
   end
 
-  @doc false
+  @doc """
+  TODO
+  """
+  @spec rset(conn, timeout) :: :ok | {:error, Exception.t()}
   def rset(conn, timeout) do
-    with {:ok = ok, _reply} <- communicate(conn, "RSET\r\n", 250, timeout), do: ok
+    with {:ok = ok, _reply} <- comm(conn, "RSET\r\n", 250, timeout), do: ok
   end
 
-  @doc false
+  @doc """
+  TODO
+  """
+  @spec noop(conn, timeout) :: :ok | {:error, Exception.t()}
   def noop(conn, timeout) do
-    with {:ok = ok, _reply} <- communicate(conn, "NOOP\r\n", 250, timeout), do: ok
+    with {:ok = ok, _reply} <- comm(conn, "NOOP\r\n", 250, timeout), do: ok
   end
 
-  # low level api
-
-  defp communicate(conn, command, status, timeout) do
-    :ok = __send(conn, command)
-
-    case recv(conn, timeout) do
-      {:ok, [{^status, _} | _] = chunks} -> {:ok, for({_, line} <- chunks, do: line)}
-      {:ok, [{status, _} | _]} -> {:error, code(status)}
-      {:error, _reason} = error -> error
+  # TODO remove
+  defp comm(conn, command, status, timeout) do
+    with :ok <- send(conn, command) do
+      case recv_all(conn, timeout) do
+        {:ok, [{^status, _} | _] = chunks} -> {:ok, for({_, line} <- chunks, do: line)}
+        {:ok, [{status, _} | _]} -> {:error, code(status)}
+        {:error, _reason} = error -> error
+      end
     end
   end
 
-  defp __send(conn, data) do
-    Logger.debug(data)
-    _send(conn, data)
-  end
+  @compile inline: [send: 2]
+  defp send(conn, data) when is_port(conn), do: :gen_tcp.send(conn, data)
+  defp send(conn, data), do: :ssl.send(conn, data)
 
-  @compile inline: [_send: 2]
-  defp _send(conn, data) when is_port(conn), do: :gen_tcp.send(conn, data)
-  defp _send(conn, data), do: :ssl.send(conn, data)
+  @compile inline: [recv: 3]
+  defp recv(conn, size, timeout) when is_port(conn), do: :gen_tcp.recv(conn, size, timeout)
+  defp recv(conn, size, timeout), do: :ssl.recv(conn, size, timeout)
 
-  @compile inline: [_recv: 3]
-  defp _recv(conn, size, timeout) when is_port(conn), do: :gen_tcp.recv(conn, size, timeout)
-  defp _recv(conn, size, timeout), do: :ssl.recv(conn, size, timeout)
-
-  defp recv(conn, timeout), do: recv(conn, timeout, [])
-
-  defp recv(conn, timeout, acc) do
-    with {:ok, data} <- _recv(conn, 0, timeout) do
-      Logger.debug(data)
+  defp recv_all(conn, timeout, acc \\ []) do
+    with {:ok, data} <- recv(conn, 0, timeout) do
       <<status::3-bytes, sep, rest::bytes>> = data
 
       acc = [
@@ -283,7 +300,7 @@ defmodule Mua do
       ]
 
       case sep do
-        ?- -> recv(conn, timeout, acc)
+        ?- -> recv_all(conn, timeout, acc)
         ?\s -> {:ok, :lists.reverse(acc)}
       end
     end
