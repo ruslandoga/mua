@@ -6,9 +6,31 @@ defmodule Mua do
   import Kernel, except: [send: 2]
   require Logger
 
+  defmodule SMTPError do
+    @moduledoc """
+    TODO
+    """
+    defexception [:code, :message]
+  end
+
+  defmodule TransportError do
+    @moduledoc """
+    TODO
+    """
+    defexception [:code, :message]
+  end
+
+  defmodule Error do
+    @moduledoc """
+    TODO
+    """
+    defexception [:code, :message]
+  end
+
   @dialyzer :no_improper_lists
 
   @type conn :: :gen_tcp.socket() | :ssl.sslsocket()
+  @type error :: %Error{} | %SMTPError{} | %TransportError{}
 
   @doc """
   TODO
@@ -19,7 +41,7 @@ defmodule Mua do
           port :: :inet.port_number(),
           opts :: Keyword.t()
         ) ::
-          {:ok, conn, String.t()} | {:error, term}
+          {:ok, conn, String.t()} | {:error, error}
   def connect(protocol, host, port, opts \\ []) do
     host =
       case host do
@@ -95,7 +117,7 @@ defmodule Mua do
           recipients :: [String.t()],
           message :: iodata,
           opts :: Keyword.t()
-        ) :: {:ok, receipt :: String.t()} | {:error, Exception.t()}
+        ) :: {:ok, receipt :: String.t()} | {:error, error}
   def send(host, sender, recipients, message, opts \\ []) do
     hosts = mxlookup(host)
     send_any(hosts, sender, recipients, message, opts)
@@ -157,7 +179,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec ehlo(conn, String.t(), timeout) :: {:ok, [String.t()]} | {:error, Exception.t()}
+  @spec ehlo(conn, String.t(), timeout) :: {:ok, [String.t()]} | {:error, error}
   def ehlo(conn, hostname, timeout) when is_binary(hostname) do
     with {:ok, [_ | extensions]} <- comm(conn, ["EHLO ", hostname | "\r\n"], 250, timeout) do
       extensions =
@@ -175,7 +197,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec helo(conn, String.t(), timeout) :: :ok | {:error, Exception.t()}
+  @spec helo(conn, String.t(), timeout) :: :ok | {:error, error}
   def helo(conn, hostname, timeout) when is_binary(hostname) do
     with {:ok = ok, _} <- comm(conn, ["HELO ", hostname | "\r\n"], 250, timeout) do
       ok
@@ -185,7 +207,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec starttls(:gen_tcp.socket(), timeout) :: {:ok, :ssl.sslsocket()} | {:error, Exception.t()}
+  @spec starttls(:gen_tcp.socket(), timeout) :: {:ok, :ssl.sslsocket()} | {:error, error}
   def starttls(conn, timeout) when is_port(conn) do
     with {:ok, _reply} <- comm(conn, "STARTTLS\r\n", 220, timeout) do
       # TODO verify
@@ -197,7 +219,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec mail_from(conn, String.t(), timeout) :: :ok | {:error, Exception.t()}
+  @spec mail_from(conn, String.t(), timeout) :: :ok | {:error, error}
   def mail_from(conn, address, timeout) do
     with {:ok = ok, _} <- comm(conn, ["MAIL FROM: ", quoteaddr(address) | "\r\n"], 250, timeout) do
       ok
@@ -207,7 +229,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec rcpt_to(conn, [String.t()], timeout) :: :ok | {:error, Exception.t()}
+  @spec rcpt_to(conn, [String.t()], timeout) :: :ok | {:error, error}
   def rcpt_to(conn, [address | addresses], timeout) do
     with :ok <- send(conn, ["RCPT TO: ", quoteaddr(address) | "\r\n"]) do
       case recv_all(conn, timeout) do
@@ -228,7 +250,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec data(conn, iodata, timeout) :: {:ok, receipt :: String.t()} | {:error, Exception.t()}
+  @spec data(conn, iodata, timeout) :: {:ok, receipt :: String.t()} | {:error, error}
   def data(conn, message, timeout) do
     with {:ok, _} <- comm(conn, "DATA\r\n", 354, timeout),
          {:ok = ok, [receipt]} <- comm(conn, [message | "\r\n.\r\n"], 250, timeout),
@@ -238,7 +260,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec vrfy(conn, String.t(), timeout) :: {:ok, boolean} | {:error, Exception.t()}
+  @spec vrfy(conn, String.t(), timeout) :: {:ok, boolean} | {:error, error}
   def vrfy(conn, address, timeout) do
     case comm(conn, ["VRFY ", quoteaddr(address) | "\r\n"], 250, timeout) do
       {:ok = ok, [_]} -> {ok, true}
@@ -250,7 +272,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec quit(conn, timeout) :: :ok | {:error, Exception.t()}
+  @spec quit(conn, timeout) :: :ok | {:error, error}
   def quit(conn, timeout) do
     with {:ok = ok, _reply} <- comm(conn, "QUIT\r\n", 221, timeout), do: ok
   end
@@ -258,7 +280,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec rset(conn, timeout) :: :ok | {:error, Exception.t()}
+  @spec rset(conn, timeout) :: :ok | {:error, error}
   def rset(conn, timeout) do
     with {:ok = ok, _reply} <- comm(conn, "RSET\r\n", 250, timeout), do: ok
   end
@@ -266,7 +288,7 @@ defmodule Mua do
   @doc """
   TODO
   """
-  @spec noop(conn, timeout) :: :ok | {:error, Exception.t()}
+  @spec noop(conn, timeout) :: :ok | {:error, error}
   def noop(conn, timeout) do
     with {:ok = ok, _reply} <- comm(conn, "NOOP\r\n", 250, timeout), do: ok
   end
@@ -379,6 +401,7 @@ defmodule Mua do
       to_string(fqdn)
     else
       error ->
+        # TODO
         Logger.error(where: "guess_fqdn", error: error)
         "localhost"
     end
