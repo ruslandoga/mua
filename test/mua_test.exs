@@ -111,7 +111,8 @@ defmodule MuaTest do
       assert {:ok, conn, _banner} = Mua.connect(:tcp, "gmail-smtp-in.l.google.com", 25)
       on_exit(fn -> :ok = Mua.close(conn) end)
 
-      assert {:ok, extensions} = Mua.ehlo(conn, _hostname = "mac3", _timeout = :timer.seconds(1))
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
 
       assert Enum.sort(extensions) == [
                {"SIZE", "157286400"},
@@ -128,7 +129,8 @@ defmodule MuaTest do
       assert {:ok, conn, _banner} = Mua.connect(:tcp, "smtp.gmail.com", 25)
       on_exit(fn -> :ok = Mua.close(conn) end)
 
-      assert {:ok, extensions} = Mua.ehlo(conn, _hostname = "mac3", _timeout = :timer.seconds(1))
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
 
       assert Enum.sort(extensions) == [
                {"SIZE", "35882577"},
@@ -145,7 +147,8 @@ defmodule MuaTest do
       assert {:ok, conn, _banner} = Mua.connect(:tcp, "home-mx.app.hey.com", 25)
       on_exit(fn -> :ok = Mua.close(conn) end)
 
-      assert {:ok, extensions} = Mua.ehlo(conn, _hostname = "mac3", _timeout = :timer.seconds(1))
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
 
       assert Enum.sort(extensions) == [
                {"SIZE", "39146841"},
@@ -160,7 +163,9 @@ defmodule MuaTest do
     test "mx.yandex.ru" do
       assert {:ok, conn, _banner} = Mua.connect(:tcp, "mx.yandex.ru", 25)
       on_exit(fn -> :ok = Mua.close(conn) end)
-      assert {:ok, extensions} = Mua.ehlo(conn, _hostname = "mac3", _timeout = :timer.seconds(1))
+
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
 
       assert Enum.sort(extensions) == [
                {"SIZE", "53477376"},
@@ -170,6 +175,102 @@ defmodule MuaTest do
                "PIPELINING",
                "STARTTLS"
              ]
+    end
+  end
+
+  describe "helo" do
+    test "gmail-smtp-in.l.google.com" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "gmail-smtp-in.l.google.com", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert :ok =
+               Mua.helo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+    end
+
+    test "smtp.gmail.com" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "smtp.gmail.com", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert :ok =
+               Mua.helo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+    end
+
+    test "home-mx.app.hey.com" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "home-mx.app.hey.com", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert :ok =
+               Mua.helo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+    end
+
+    test "mx.yandex.ru" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "mx.yandex.ru", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert :ok =
+               Mua.helo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+    end
+  end
+
+  describe "starttls" do
+    test "gmail-smtp-in.l.google.com" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "gmail-smtp-in.l.google.com", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+
+      assert "STARTTLS" in extensions
+
+      assert {:ok, conn} = Mua.starttls(conn, _timeout = :timer.seconds(1))
+      assert {:ok, _cert} = :ssl.peercert(conn)
+
+      on_exit(fn -> :ok = Mua.close(conn) end)
+    end
+
+    test "smtp.gmail.com" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "smtp.gmail.com", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+
+      assert "STARTTLS" in extensions
+
+      assert {:ok, conn} = Mua.starttls(conn, _timeout = :timer.seconds(1))
+      assert {:ok, _cert} = :ssl.peercert(conn)
+
+      on_exit(fn -> :ok = Mua.close(conn) end)
+    end
+
+    test "home-mx.app.hey.com" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "home-mx.app.hey.com", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+
+      assert "STARTTLS" in extensions
+
+      assert {:ok, conn} = Mua.starttls(conn, _timeout = :timer.seconds(1))
+      assert {:ok, _cert} = :ssl.peercert(conn)
+
+      on_exit(fn -> :ok = Mua.close(conn) end)
+    end
+
+    test "mx.yandex.ru" do
+      assert {:ok, conn, _banner} = Mua.connect(:tcp, "mx.yandex.ru", 25)
+      on_exit(fn -> :ok = Mua.close(conn) end)
+
+      assert {:ok, extensions} =
+               Mua.ehlo(conn, _sender_hostname = Mua.guess_fqdn(), _timeout = :timer.seconds(1))
+
+      assert "STARTTLS" in extensions
+
+      assert {:ok, conn} = Mua.starttls(conn, _timeout = :timer.seconds(1))
+      assert {:ok, _cert} = :ssl.peercert(conn)
+
+      on_exit(fn -> :ok = Mua.close(conn) end)
     end
   end
 

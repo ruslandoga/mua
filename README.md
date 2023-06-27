@@ -56,10 +56,10 @@ Low-level API:
 ```elixir
 [host | _rest] = Mua.mxlookup("gmail.com")
 {:ok, conn, _banner} = Mua.connect(:tcp, host, _port = 25)
-{:ok, extensions} = Mua.ehlo(conn)
+{:ok, extensions} = Mua.ehlo(conn, _sender_host = Mua.guess_fqdn(), _timeout = :timer.seconds(5))
 
 true = "STARTTLS" in extensions
-{:ok, conn} = Mua.starttls(conn)
+{:ok, conn} = Mua.starttls(conn, _timeout = :timer.seconds(5))
 
 :ok = Mua.mail_from(conn, "hey@copycat.fun")
 :ok = Mua.rcpt_to(conn, "dogaruslan@gmail.com")
