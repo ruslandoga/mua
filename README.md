@@ -39,18 +39,6 @@ like and subscribe\r
 .\r
 """
 
-default_opts = [
-  protocol: :tcp,
-  port: 25,
-  hostname: Mua.guess_fqdn(),
-  timeout: :timer.seconds(15),
-  transport_opts: [
-    # STARTTLS
-    cacertfile: CAStore.file_path(),
-    verify: :verify_peer
-  ]
-]
-
 host = fn recipient ->
   [_user, host] = String.split(recipient, "@")
   host
@@ -59,25 +47,19 @@ end
 recipients
 |> Enum.group_by(host)
 |> Enum.map(fn {host, recipients} ->
-  Mua.send(host, from, recipients, message, default_opts)
+  Mua.send(host, from, recipients, message)
 end)
 ```
 
 Low-level API:
 
 ```elixir
-{:ok, conn, _banner} = Mua.connect(:tcp, "gmail.com", _port = 25, timeout: :timer.seconds(15))
-{:ok, extensions} = Mua.ehlo(conn, hostname: Mua.guess_fqdn())
+[host | _rest] = Mua.mxlookup("gmail.com")
+{:ok, conn, _banner} = Mua.connect(:tcp, host, _port = 25)
+{:ok, extensions} = Mua.ehlo(conn)
 
 true = "STARTTLS" in extensions
-
-{:ok, conn} =
-  Mua.starttls(conn,
-    transport_opts: [
-      cacertfile: CAStore.file_path(),
-      verify: :verify_peer
-    ]
-  )
+{:ok, conn} = Mua.starttls(conn)
 
 :ok = Mua.mail_from(conn, "hey@copycat.fun")
 :ok = Mua.rcpt_to(conn, "dogaruslan@gmail.com")
@@ -100,9 +82,8 @@ true = "STARTTLS" in extensions
 ### TODOs
 
 - [ ] clean errors
-- [ ] port fallback, tcp: 25, tcp: 2525, ssl: 465 + configurable
-- [ ] separate packages + swoosh adapter
-- [ ] (optional) auth / relay (then port: [tcp: 587])
-- [ ] (optional) dkim
-- [ ] castore, mint-like tls settings, verify_peer?
+- [ ] inet6
+- [ ] secure ssl opts
+- [ ] separate packages for bamboo and swoosh adapter
+- [ ] auth and other smtp commands
 - [ ] telemetry (bounces, etc.)

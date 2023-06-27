@@ -368,10 +368,11 @@ defmodule Mua do
   require Record
   Record.defrecord(:hostent, Record.extract(:hostent, from_lib: "kernel/include/inet.hrl"))
 
-  # returns a sorted list of mx servers for `domain', lowest distance first
-  # copied from gen_smtp
-  @doc false
-  def mxlookup(domain) do
+  @doc """
+  Returns a sorted list of mx servers for `domain`, lowest distance first.
+  """
+  @spec mxlookup(String.t()) :: [String.t()]
+  def mxlookup(domain) when is_binary(domain) do
     case :erlang.whereis(:inet_db) do
       p when is_pid(p) -> :ok
       _ -> :inet_db.start()
@@ -386,12 +387,9 @@ defmodule Mua do
         :ok
     end
 
-    domain = to_charlist(domain)
-
-    case :inet_res.lookup(domain, :in, :mx) do
-      [] -> [domain]
-      result -> result |> :lists.sort() |> Enum.map(fn {_, host} -> host end)
-    end
+    :inet_res.lookup(to_charlist(domain), :in, :mx)
+    |> :lists.sort()
+    |> Enum.map(fn {_, host} -> List.to_string(host) end)
   end
 
   @doc false
