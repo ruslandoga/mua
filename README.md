@@ -81,7 +81,6 @@ _maybe_already_closed = Mua.quit(socket)
 
 ### TODOs
 
-- [ ] separate packages for bamboo and swoosh adapter
 - [ ] tests
 - [ ] configure if tls is required or not
 - [ ] auth and other smtp commands
