@@ -565,14 +565,9 @@ defmodule Mua.SSL do
 
   @doc false
   def get_ciphers_for_versions(versions) do
-    if version() >= [8, 2, 4] do
-      # :ssl.filter_cipher_suites/2 is available in ssl v8.2.4+
-      versions
-      |> Enum.flat_map(&:ssl.filter_cipher_suites(:ssl.cipher_suites(:all, &1), []))
-      |> Enum.uniq()
-    else
-      :ssl.cipher_suites(:all)
-    end
+    versions
+    |> Enum.flat_map(&:ssl.filter_cipher_suites(:ssl.cipher_suites(:all, &1), []))
+    |> Enum.uniq()
     |> Enum.reject(&blocked_cipher?/1)
   end
 end
