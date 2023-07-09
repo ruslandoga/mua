@@ -20,7 +20,7 @@ erl_crash.dump
 *.ez
 
 # Ignore package tarball (built via "mix hex.build").
-bamboo_naive_smtp-*.tar
+mua-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
