@@ -81,8 +81,15 @@ defmodule Mua do
     fqdn = opts[:fqdn] || guess_fqdn_or_localhost()
 
     case mxlookup(host) do
-      [] -> easy_send_one(host, fqdn, sender, recipients, message, opts)
-      hosts -> easy_send_any(hosts, fqdn, sender, recipients, message, opts)
+      [] ->
+        Logger.warning(
+          "failed to lookup MX records for #{host}, will try connecting to #{host} directly"
+        )
+
+        easy_send_one(host, fqdn, sender, recipients, message, opts)
+
+      hosts ->
+        easy_send_any(hosts, fqdn, sender, recipients, message, opts)
     end
   end
 
@@ -94,8 +101,7 @@ defmodule Mua do
 
       {:error, reason} ->
         Logger.warning(
-          "failed to guess local FQDN with reason #{inspect(reason)}," <>
-            " using \"localhost\" instead"
+          ~s[failed to guess local FQDN with reason #{inspect(reason)}, using "localhost" instead]
         )
 
         "localhost"
@@ -107,9 +113,18 @@ defmodule Mua do
       {:ok, _receipt} = ok ->
         ok
 
-      {:error, %Mua.SMTPError{code: code} = reason}
-      when hosts != [] and code in [421, 450, 451, 452, 550] ->
-        Logger.error("failed to send email to #{host}: " <> Exception.message(reason))
+      {:error, %Mua.SMTPError{code: code} = error}
+      when hosts != [] and code in [421, 450, 451, 452] ->
+        Logger.error("failed to send email to #{host}:\n" <> Exception.message(error))
+        easy_send_any(hosts, fqdn, sender, recipients, message, opts)
+
+      # other smtp errors are not retriable
+      {:error, %Mua.SMTPError{}} = error ->
+        error
+
+      # non-smtp errors are transport errors and can be retried
+      {:error, reason} when hosts != [] ->
+        Logger.error("failed to send email to #{host} with reason #{inspect(reason)}")
         easy_send_any(hosts, fqdn, sender, recipients, message, opts)
 
       {:error, _reason} = error ->
@@ -131,7 +146,7 @@ defmodule Mua do
               if protocol == :tcp and "STARTTLS" in extensions do
                 with {:ok, socket} = ok <- starttls(socket, host, transport_opts),
                      # some servers require another EHLO after STARTTLS
-                     {:ok, _} <- ehlo(socket, fqdn, timeout),
+                     {:ok, _extensions} <- ehlo(socket, fqdn, timeout),
                      do: ok
               else
                 {:ok, socket}
@@ -151,7 +166,8 @@ defmodule Mua do
              :ok <- rcpt_to(socket, recipients, timeout),
              do: data(socket, message, timeout)
       after
-        quit(socket, timeout)
+        # TODO
+        # quit(socket, timeout)
         close(socket)
       end
     end
@@ -170,11 +186,11 @@ defmodule Mua do
           :inet.port_number(),
           opts :: keyword
         ) ::
-          {:ok, socket, String.t()} | {:error, any}
+          {:ok, socket, banner :: String.t()} | {:error, any}
   def connect(protocol, address, port, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     inet6? = Keyword.get(opts, :inet6, false)
-    opts = Keyword.drop(opts, [:timeout, :inet6])
+    opts = Keyword.drop(opts, [:timeout, :inet6, :mode, :active, :packet])
     opts = [{:mode, :binary}, {:active, false}, {:packet, :line} | opts]
 
     opts =
@@ -208,22 +224,18 @@ defmodule Mua do
     with {:ok, socket} <- connect_result,
          {:ok, received} <- recv_all(socket, timeout) do
       case received do
-        [220 | banner] ->
-          {:ok, socket, IO.iodata_to_binary(banner)}
+        [220 | lines] ->
+          {:ok, socket, IO.iodata_to_binary(lines)}
 
         [code | lines] ->
           # TODO need QUIT?
-          case close(socket) do
-            {:error, reason} ->
-              Logger.warning(
-                "failed to close socket on failed banner, reason: #{inspect(reason)}"
-              )
-
-            ok ->
-              ok
+          with {:error, reason} <- close(socket) do
+            Logger.warning(
+              "failed to close socket on failed greeting, reason: #{inspect(reason)}"
+            )
           end
 
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+          smtp_error(code, lines)
       end
     end
   end
@@ -251,15 +263,22 @@ defmodule Mua do
   """
   @spec ehlo(socket, String.t(), timeout) :: {:ok, [String.t()]} | {:error, Exception.t()}
   def ehlo(socket, hostname, timeout \\ @default_timeout) when is_binary(hostname) do
-    with :ok <- send(socket, ["EHLO ", hostname | "\r\n"]),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [250, _greeting | extensions] ->
-          {:ok, extensions}
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, ["EHLO ", hostname | "\r\n"], timeout) do
+      case response do
+        [250, _greeting | extensions] -> {:ok, Enum.map(extensions, &__MODULE__.trim_extension/1)}
+        [code | lines] -> smtp_error(code, lines)
       end
+    end
+  end
+
+  @doc false
+  def trim_extension(<<_::4-bytes, line::bytes>>) do
+    size = byte_size(line)
+
+    case line do
+      <<extension::size(size - 2)-bytes, "\r\n">> -> extension
+      <<extension::size(size - 1)-bytes, ?\n>> -> extension
+      <<extension::size(size - 1)-bytes, ?\r>> -> extension
     end
   end
 
@@ -271,14 +290,10 @@ defmodule Mua do
   """
   @spec helo(socket, String.t(), timeout) :: :ok | {:error, any}
   def helo(socket, hostname, timeout \\ @default_timeout) when is_binary(hostname) do
-    with :ok <- send(socket, ["HELO ", hostname | "\r\n"]),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [250 | _lines] ->
-          :ok
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, ["HELO ", hostname | "\r\n"], timeout) do
+      case response do
+        [250 | _lines] -> :ok
+        [code | lines] -> smtp_error(code, lines)
       end
     end
   end
@@ -293,16 +308,15 @@ defmodule Mua do
   def starttls(socket, address, opts \\ []) when is_port(socket) do
     timeout = opts[:timeout] || @default_timeout
 
-    with :ok <- send(socket, "STARTTLS\r\n"),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
+    with {:ok, response} <- request(socket, "STARTTLS\r\n", timeout) do
+      case response do
         [220 | _lines] ->
           with :ok <- :inet.setopts(socket, active: false) do
             :ssl.connect(socket, Mua.SSL.opts(address, opts), timeout)
           end
 
         [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+          smtp_error(code, lines)
       end
     end
   end
@@ -325,14 +339,10 @@ defmodule Mua do
   """
   @spec mail_from(socket, String.t(), timeout) :: :ok | {:error, any}
   def mail_from(socket, address, timeout \\ @default_timeout) do
-    with :ok <- send(socket, ["MAIL FROM: ", quoteaddr(address) | "\r\n"]),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [250 | _lines] ->
-          :ok
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, ["MAIL FROM: ", quoteaddr(address) | "\r\n"], timeout) do
+      case response do
+        [250 | _lines] -> :ok
+        [code | lines] -> smtp_error(code, lines)
       end
     end
   end
@@ -347,14 +357,10 @@ defmodule Mua do
   def rcpt_to(socket, recipients, timeout \\ @default_timeout)
 
   def rcpt_to(socket, [address | addresses], timeout) do
-    with :ok <- send(socket, ["RCPT TO: ", quoteaddr(address) | "\r\n"]),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [code | _lines] when code in [250, 251] ->
-          rcpt_to(socket, addresses, timeout)
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, ["RCPT TO: ", quoteaddr(address) | "\r\n"], timeout) do
+      case response do
+        [code | _lines] when code in [250, 251] -> rcpt_to(socket, addresses, timeout)
+        [code | lines] -> smtp_error(code, lines)
       end
     end
   end
@@ -369,23 +375,18 @@ defmodule Mua do
   """
   @spec data(socket, iodata, timeout) :: {:ok, receipt :: String.t()} | {:error, any}
   def data(socket, message, timeout \\ @default_timeout) do
-    with :ok <- send(socket, "DATA\r\n"),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
+    with {:ok, response} <- request(socket, "DATA\r\n", timeout) do
+      case response do
         [354 | _lines] ->
-          with :ok <- send(socket, [message | "\r\n.\r\n"]),
-               {:ok, received} <- recv_all(socket, timeout) do
-            case received do
-              [250 | receipt] ->
-                {:ok, IO.iodata_to_binary(receipt)}
-
-              [code | lines] ->
-                {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+          with {:ok, response} <- request(socket, [message | "\r\n.\r\n"], timeout) do
+            case response do
+              [250 | lines] -> {:ok, IO.iodata_to_binary(lines)}
+              [code | lines] -> smtp_error(code, lines)
             end
           end
 
         [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+          smtp_error(code, lines)
       end
     end
   end
@@ -398,17 +399,11 @@ defmodule Mua do
   """
   @spec vrfy(socket, String.t(), timeout) :: {:ok, boolean} | {:error, any}
   def vrfy(socket, address, timeout \\ @default_timeout) do
-    with :ok <- send(socket, ["VRFY ", quoteaddr(address) | "\r\n"]),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [250 | _lines] ->
-          {:ok, true}
-
-        [code | _lines] when code in [251, 252, 551] ->
-          {:ok, false}
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, ["VRFY ", quoteaddr(address) | "\r\n"], timeout) do
+      case response do
+        [250 | _lines] -> {:ok, true}
+        [code | _lines] when code in [251, 252, 551] -> {:ok, false}
+        [code | lines] -> smtp_error(code, lines)
       end
     end
   end
@@ -421,14 +416,10 @@ defmodule Mua do
   """
   @spec rset(socket, timeout) :: :ok | {:error, any}
   def rset(socket, timeout \\ @default_timeout) do
-    with :ok <- send(socket, "RSET\r\n"),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [250 | _lines] ->
-          :ok
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, "RSET\r\n", timeout) do
+      case response do
+        [250 | _lines] -> :ok
+        [code | lines] -> smtp_error(code, lines)
       end
     end
   end
@@ -439,16 +430,12 @@ defmodule Mua do
       :ok = noop(socket)
 
   """
-  @spec noop(socket, timeout) :: :ok | {:error, Exception.t()}
+  @spec noop(socket, timeout) :: :ok | {:error, any}
   def noop(socket, timeout \\ @default_timeout) do
-    with :ok <- send(socket, "NOOP\r\n"),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [250 | _lines] ->
-          :ok
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, "NOOP\r\n", timeout) do
+      case response do
+        [250 | _lines] -> :ok
+        [code | lines] -> smtp_error(code, lines)
       end
     end
   end
@@ -461,14 +448,10 @@ defmodule Mua do
   """
   @spec quit(socket, timeout) :: :ok | {:error, Exception.t()}
   def quit(socket, timeout \\ @default_timeout) do
-    with :ok <- send(socket, "QUIT\r\n"),
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [221 | _lines] ->
-          :ok
-
-        [code | lines] ->
-          {:error, Mua.SMTPError.exception(code: code, message: IO.iodata_to_binary(lines))}
+    with {:ok, response} <- request(socket, "QUIT\r\n", timeout) do
+      case response do
+        [221 | _lines] -> :ok
+        [code | lines] -> smtp_error(code, lines)
       end
     end
   end
@@ -484,11 +467,11 @@ defmodule Mua do
   defp recv_all(socket, timeout) do
     with {:ok, line} <- recv(socket, 0, timeout) do
       case line do
-        <<status::3-bytes, ?\s, rest::bytes>> ->
-          {:ok, [String.to_integer(status), trim_line(rest)]}
+        <<status::3-bytes, ?\s, _::bytes>> = line ->
+          {:ok, [String.to_integer(status), line]}
 
-        <<status::3-bytes, ?-, rest::bytes>> ->
-          recv_all_cont(socket, timeout, status, [trim_line(rest)])
+        <<status::3-bytes, ?-, _::bytes>> = line ->
+          recv_all_cont(socket, timeout, status, [line])
       end
     end
   end
@@ -496,24 +479,23 @@ defmodule Mua do
   defp recv_all_cont(socket, timeout, status, acc) do
     with {:ok, line} <- recv(socket, 0, timeout) do
       case line do
-        <<^status::3-bytes, ?-, rest::bytes>> ->
-          recv_all_cont(socket, timeout, status, [trim_line(rest) | acc])
+        <<^status::3-bytes, ?-, _::bytes>> = line ->
+          recv_all_cont(socket, timeout, status, [line | acc])
 
-        <<^status::3-bytes, ?\s, rest::bytes>> ->
-          {:ok, [String.to_integer(status) | :lists.reverse([trim_line(rest) | acc])]}
+        <<^status::3-bytes, ?\s, _::bytes>> = line ->
+          {:ok, [String.to_integer(status) | :lists.reverse([line | acc])]}
       end
     end
   end
 
-  @compile inline: [trim_line: 1]
-  defp trim_line(line) do
-    size = byte_size(line)
+  @compile inline: [request: 3]
+  defp request(socket, data, timeout) do
+    with :ok <- send(socket, data), do: recv_all(socket, timeout)
+  end
 
-    case line do
-      <<line::size(size - 2)-bytes, "\r\n">> -> line
-      <<line::size(size - 1)-bytes, ?\n>> -> line
-      <<line::size(size - 1)-bytes, ?\r>> -> line
-    end
+  @compile inline: [smtp_error: 2]
+  defp smtp_error(code, lines) do
+    {:error, Mua.SMTPError.exception(code: code, lines: lines)}
   end
 
   # TODO implement proper RFC2822

@@ -75,7 +75,7 @@ true = "STARTTLS" in extensions
   .\r
   """)
 
-_maybe_already_closed = Mua.quit(socket)
+:ok = Mua.quit(socket)
 :ok = Mua.close(socket)
 ```
 
@@ -83,5 +83,5 @@ _maybe_already_closed = Mua.quit(socket)
 
 - [ ] tests
 - [ ] configure if tls is required or not
-- [ ] auth and other smtp commands
+- [ ] auth
 - [ ] telemetry (bounces, etc.)
