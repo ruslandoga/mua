@@ -352,26 +352,9 @@ defmodule Mua.SSL do
   end
 
   defp add_customize_hostname_check(opts) do
-    Keyword.put_new(opts, :customize_hostname_check, match_fun: &match_fun/2)
+    match_fun = :public_key.pkix_verify_hostname_match_fun(:https)
+    Keyword.put_new(opts, :customize_hostname_check, match_fun: match_fun)
   end
-
-  # Wildcard domain handling for DNS ID entries in the subjectAltName X.509
-  # extension. Note that this is a subset of the wildcard patterns implemented
-  # by OTP when matching against the subject CN attribute, but this is the only
-  # wildcard usage defined by the CA/Browser Forum's Baseline Requirements, and
-  # therefore the only pattern used in commercially issued certificates.
-  defp match_fun({:dns_id, reference}, {:dNSName, [?*, ?. | presented]}) do
-    case domain_without_host(reference) do
-      ~c"" -> :default
-      domain -> :string.casefold(domain) == :string.casefold(presented)
-    end
-  end
-
-  defp match_fun(_reference, _presented), do: :default
-
-  defp domain_without_host([]), do: []
-  defp domain_without_host([?. | domain]), do: domain
-  defp domain_without_host([_ | more]), do: domain_without_host(more)
 
   defp add_ciphers_opt(opts) do
     Keyword.put_new_lazy(opts, :ciphers, fn ->
