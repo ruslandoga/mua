@@ -1,5 +1,8 @@
 # Mua
 
+[![Hex Package](https://img.shields.io/hexpm/v/mua.svg)](https://hex.pm/packages/mua)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/mua)
+
 Minimal SMTP client (aka Mail user agent).
 
 Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.](https://github.com/ruslandoga/swoosh_mua)
@@ -8,6 +11,18 @@ Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.
 
 - Direct messaging (no relays)
 - Minimal API
+
+Your ideas are welcome [here.](https://github.com/ruslandoga/mua/issues/2)
+
+## Installation
+
+```elixir
+defp deps do
+  [
+    {:mua, "~> 0.1.0"}
+  ]
+end
+```
 
 ## Usage
 
