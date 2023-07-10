@@ -62,7 +62,7 @@ true = "STARTTLS" in extensions
 {:ok, socket} = Mua.starttls(socket, host)
 
 :ok = Mua.mail_from(socket, "hey@copycat.fun")
-:ok = Mua.rcpt_to(socket, ["dogaruslan@gmail.com"])
+:ok = Mua.rcpt_to(socket, "dogaruslan@gmail.com")
 
 {:ok, _receipt} =
   Mua.data(socket, """
@@ -78,10 +78,3 @@ true = "STARTTLS" in extensions
 :ok = Mua.quit(socket)
 :ok = Mua.close(socket)
 ```
-
-### TODOs
-
-- [ ] tests
-- [ ] configure if tls is required or not
-- [ ] auth
-- [ ] telemetry (bounces, etc.)

@@ -1,0 +1,4 @@
+- tests
+- configure if tls is required or not
+- auth
+- telemetry (bounces, etc.)

@@ -257,7 +257,7 @@ defmodule MuaTest do
       on_exit(fn -> :ok = Mua.close(socket) end)
       assert {:ok, _extensions} = Mua.ehlo(socket, fqdn_or_localhost())
 
-      assert {:error, %Mua.SMTPError{} = error} = Mua.rcpt_to(socket, ["dogaruslan@gmail.com"])
+      assert {:error, %Mua.SMTPError{} = error} = Mua.rcpt_to(socket, "dogaruslan@gmail.com")
 
       assert error.code == 503
       assert Exception.message(error) =~ "503 5.5.1 bad sequence of commands"
@@ -269,7 +269,7 @@ defmodule MuaTest do
       on_exit(fn -> :ok = Mua.close(socket) end)
       assert {:ok, _extensions} = Mua.ehlo(socket, fqdn_or_localhost())
       assert :ok = Mua.mail_from(socket, "hey@copycat.fun")
-      assert :ok = Mua.rcpt_to(socket, ["dogaruslan@gmail.com"])
+      assert :ok = Mua.rcpt_to(socket, "dogaruslan@gmail.com")
     end
   end
 

@@ -163,7 +163,7 @@ defmodule Mua do
 
         with {:ok, socket} <- result,
              :ok <- mail_from(socket, sender, timeout),
-             :ok <- rcpt_to(socket, recipients, timeout),
+             :ok <- easy_rcpt_to(socket, recipients, timeout),
              do: data(socket, message, timeout)
       after
         # TODO
@@ -172,6 +172,12 @@ defmodule Mua do
       end
     end
   end
+
+  defp easy_rcpt_to(socket, [address | addresses], timeout) do
+    with :ok <- rcpt_to(socket, address, timeout), do: easy_rcpt_to(socket, addresses, timeout)
+  end
+
+  defp easy_rcpt_to(_socket, [], _timeout), do: :ok
 
   @doc """
   Connects to an SMTP server and receives its banner.
@@ -348,24 +354,20 @@ defmodule Mua do
   end
 
   @doc """
-  Sends `RCPT TO` command(s) that specify the recipient(s) of the mail.
+  Sends `RCPT TO` command that specify the recipient of the mail.
 
-      :ok = rcpt_to(socket, ["username@hey.com", "world@hey.com"])
+      :ok = rcpt_to(socket, "world@hey.com")
 
   """
-  @spec rcpt_to(socket, [String.t()], timeout) :: :ok | {:error, any}
-  def rcpt_to(socket, recipients, timeout \\ @default_timeout)
-
-  def rcpt_to(socket, [address | addresses], timeout) do
+  @spec rcpt_to(socket, String.t(), timeout) :: :ok | {:error, any}
+  def rcpt_to(socket, address, timeout \\ @default_timeout) do
     with {:ok, response} <- request(socket, ["RCPT TO: ", quoteaddr(address) | "\r\n"], timeout) do
       case response do
-        [code | _lines] when code in [250, 251] -> rcpt_to(socket, addresses, timeout)
+        [code | _lines] when code in [250, 251] -> :ok
         [code | lines] -> smtp_error(code, lines)
       end
     end
   end
-
-  def rcpt_to(_socket, [], _timeout), do: :ok
 
   @doc """
   Sends `DATA` command that specifies the beginning of the mail, and then sends the message.
