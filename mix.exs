@@ -25,9 +25,8 @@ defmodule Mua.MixProject do
         source_url: @repo_url,
         source_ref: "v#{@version}",
         main: "readme",
-        extras: ["README.md"]
-        # extras: ["README.md", "CHANGELOG.md"],
-        # skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
+        extras: ["README.md", "CHANGELOG.md"],
+        skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
       ]
     ]
   end

@@ -12,6 +12,18 @@ jobs:
     env:
       MIX_ENV: test
 
+    services:
+      clickhouse:
+        image: mailhog/mailhog:latest
+        ports:
+          - 1025:1025
+        env:
+          options: >-
+            --health-cmd nc -zw3 localhost 1025
+            --health-interval 10s
+            --health-timeout 5s
+            --health-retries 5
+
     strategy:
       matrix:
         elixir: ["1.14", "1.15"]
