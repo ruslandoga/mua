@@ -10,6 +10,7 @@ defmodule Mua do
 
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
   @type host :: :inet.socket_address() | :inet.hostname() | String.t()
+  @type proto :: :tcp | :ssl
 
   @default_timeout :timer.seconds(30)
 
@@ -78,34 +79,33 @@ defmodule Mua do
           opts :: keyword
         ) :: {:ok, receipt :: String.t()} | {:error, any}
   def easy_send(host, sender, recipients, message, opts \\ []) do
-    fqdn = opts[:fqdn] || guess_fqdn_or_localhost()
+    fqdn =
+      if fqdn = opts[:fqdn] do
+        fqdn
+      else
+        case guess_fqdn() do
+          {:ok, fqdn} ->
+            fqdn
 
-    case mxlookup(host) do
-      [] ->
+          {:error, reason} ->
+            Logger.warning(
+              ~s[failed to guess local FQDN with reason #{inspect(reason)}, using "localhost" instead]
+            )
+
+            "localhost"
+        end
+      end
+
+    hosts =
+      with [] <- mxlookup(host) do
         Logger.warning(
           "failed to lookup MX records for #{host}, will try connecting to #{host} directly"
         )
 
-        easy_send_one(host, fqdn, sender, recipients, message, opts)
+        [host]
+      end
 
-      hosts ->
-        easy_send_any(hosts, fqdn, sender, recipients, message, opts)
-    end
-  end
-
-  @spec guess_fqdn_or_localhost :: String.t()
-  defp guess_fqdn_or_localhost do
-    case guess_fqdn() do
-      {:ok, fqdn} ->
-        fqdn
-
-      {:error, reason} ->
-        Logger.warning(
-          ~s[failed to guess local FQDN with reason #{inspect(reason)}, using "localhost" instead]
-        )
-
-        "localhost"
-    end
+    easy_send_any(hosts, fqdn, sender, recipients, message, opts)
   end
 
   defp easy_send_any([host | hosts], fqdn, sender, recipients, message, opts) do
@@ -134,67 +134,78 @@ defmodule Mua do
 
   defp easy_send_one(host, fqdn, sender, recipients, message, opts) do
     port = opts[:port] || 25
-    protocol = opts[:protocol] || :tcp
+    proto = opts[:protocol] || :tcp
     timeout = opts[:timeout] || @default_timeout
-    transport_opts = Keyword.put(opts[:transport_opts] || [], :timeout, timeout)
+    sock_opts = opts[:transport_opts] || []
 
-    with {:ok, socket, _banner} <- connect(protocol, host, port, transport_opts) do
+    with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
       try do
-        result =
-          case ehlo(socket, fqdn, timeout) do
-            {:ok, extensions} ->
-              if protocol == :tcp and "STARTTLS" in extensions do
-                with {:ok, socket} = ok <- starttls(socket, host, transport_opts),
-                     # some servers require another EHLO after STARTTLS
-                     {:ok, _extensions} <- ehlo(socket, fqdn, timeout),
-                     do: ok
-              else
-                {:ok, socket}
-              end
-
-            {:error, %Mua.SMTPError{code: 500}} ->
-              with :ok <- helo(socket, fqdn, timeout) do
-                {:ok, socket}
-              end
-
-            {:error, _reason} = error ->
-              error
-          end
-
-        with {:ok, socket} <- result,
+        with {:ok, extensions} <- ehlo_or_helo(socket, fqdn, timeout),
+             {:ok, socket} <- maybe_starttls(proto, extensions, socket, host, sock_opts, timeout),
+             :ok <- maybe_auth(extensions, socket, opts, timeout),
              :ok <- mail_from(socket, sender, timeout),
-             :ok <- easy_rcpt_to(socket, recipients, timeout),
-             do: data(socket, message, timeout)
+             :ok <- many_rcpt_to(recipients, socket, timeout),
+             {:ok, _receipt} = ok <- data(socket, message, timeout) do
+          _ = quit(socket, timeout)
+          ok
+        end
       after
-        # TODO
-        # quit(socket, timeout)
         close(socket)
       end
     end
   end
 
-  defp easy_rcpt_to(socket, [address | addresses], timeout) do
-    with :ok <- rcpt_to(socket, address, timeout), do: easy_rcpt_to(socket, addresses, timeout)
+  defp many_rcpt_to([address | addresses], socket, timeout) do
+    with :ok <- rcpt_to(socket, address, timeout), do: many_rcpt_to(addresses, socket, timeout)
   end
 
-  defp easy_rcpt_to(_socket, [], _timeout), do: :ok
+  defp many_rcpt_to([], _socket, _timeout), do: :ok
+
+  @spec ehlo_or_helo(socket, String.t(), timeout) :: {:ok, [String.t()]} | {:error, any}
+  defp ehlo_or_helo(socket, hostname, timeout) do
+    with {:error, %Mua.SMTPError{code: 500}} <- ehlo(socket, hostname, timeout),
+         :ok <- helo(socket, hostname, timeout),
+         do: {:ok, []}
+  end
+
+  @spec maybe_starttls(proto, [String.t()], socket, String.t(), keyword, timeout) ::
+          {:ok, socket} | {:error, any}
+  defp maybe_starttls(protocol, extensions, socket, host, opts, timeout) do
+    if protocol == :tcp and "STARTTLS" in extensions do
+      starttls(socket, host, opts, timeout)
+    else
+      {:ok, socket}
+    end
+  end
+
+  @spec maybe_auth([String.t()], socket, keyword, timeout) :: :ok | {:error, any}
+  defp maybe_auth(extensions, socket, opts, timeout) do
+    if method = pick_auth_method(extensions) do
+      username = opts[:username]
+      password = opts[:password]
+
+      if username && password do
+        auth(socket, method, opts, timeout)
+      end
+    end || :ok
+  end
 
   @doc """
   Connects to an SMTP server and receives its banner.
 
       {:ok, socket, _banner} = connect(:tcp, host, _port = 25)
-      {:ok, socket, _banner} = connect(:ssl, host, _port = 465, verify: :verify_peer)
+      {:ok, socket, _banner} = connect(:ssl, host, _port = 465, versions: [:"tlsv1.3"])
 
   """
   @spec connect(
-          :tcp | :ssl,
+          proto,
           :inet.socket_address() | :inet.hostname() | String.t(),
           :inet.port_number(),
-          opts :: keyword
+          opts :: keyword,
+          timeout
         ) ::
           {:ok, socket, banner :: String.t()} | {:error, any}
-  def connect(protocol, address, port, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
+  def connect(protocol, address, port, opts \\ [], timeout \\ @default_timeout) do
     inet6? = Keyword.get(opts, :inet6, false)
     opts = Keyword.drop(opts, [:timeout, :inet6, :mode, :active, :packet])
     opts = [{:mode, :binary}, {:active, false}, {:packet, :line} | opts]
@@ -252,11 +263,7 @@ defmodule Mua do
       :ok = close(socket)
 
   """
-  @spec close(socket) ::
-          :ok
-          | {:ok, :ssl.port()}
-          | {:ok, :ssl.port(), :ssl.data()}
-          | {:error, :ssl.reason()}
+  @spec close(socket) :: :ok | {:error, any}
   def close(socket) when is_port(socket), do: :gen_tcp.close(socket)
   def close(socket), do: :ssl.close(socket)
 
@@ -310,10 +317,9 @@ defmodule Mua do
       {:ok, sslsocket} = starttls(socket, host, versions: [:"tlsv1.3"])
 
   """
-  @spec starttls(:gen_tcp.socket(), host, keyword) :: {:ok, :ssl.sslsocket()} | {:error, any}
-  def starttls(socket, address, opts \\ []) when is_port(socket) do
-    timeout = opts[:timeout] || @default_timeout
-
+  @spec starttls(:gen_tcp.socket(), host, keyword, timeout) ::
+          {:ok, :ssl.sslsocket()} | {:error, any}
+  def starttls(socket, address, opts \\ [], timeout \\ @default_timeout) when is_port(socket) do
     with {:ok, response} <- request(socket, "STARTTLS\r\n", timeout) do
       case response do
         [220 | _lines] ->
@@ -327,14 +333,71 @@ defmodule Mua do
     end
   end
 
+  @type auth_method :: :login | :plain
+
+  @doc """
+  Utility function to pick a supported auth method from a list of extensions.
+
+      {:ok, extensions} = ehlo(socket, hostname)
+      maybe_method = pick_auth_method(extensions)
+      true = maybe_method in [nil, :plain, :login]
+
+  """
+  @spec pick_auth_method([String.t()]) :: auth_method | nil
+  def pick_auth_method(extensions) when is_list(extensions) do
+    auth_extension = Enum.find(extensions, &String.starts_with?(&1, "AUTH "))
+
+    if auth_extension do
+      ["AUTH" | methods] = String.split(auth_extension)
+
+      Enum.find_value(methods, fn method ->
+        case String.upcase(method) do
+          "PLAIN" -> :plain
+          "LOGIN" -> :login
+          _other -> nil
+        end
+      end)
+    end
+  end
+
   @doc """
   Sends `AUTH` extension command and authenticates the sender.
 
-      iex> :todo
+      :ok = auth(socket, :login, username: username, password: password)
+      :ok = auth(socket, :plain, username: username, password: password)
 
   """
-  def auth(_socket) do
-    raise "TODO"
+  @spec auth(socket, auth_method, keyword, timeout) :: :ok | {:error, any}
+  def auth(socket, kind, opts \\ [], timeout \\ @default_timeout)
+
+  def auth(socket, :login, opts, timeout) do
+    username = Keyword.fetch!(opts, :username)
+    password = Keyword.fetch!(opts, :password)
+    username64 = [Base.encode64(username) | "\r\n"]
+    password64 = [Base.encode64(password) | "\r\n"]
+
+    with {:ok, [334, "334 VXNlcm5hbWU6\r\n"]} <- request(socket, "AUTH LOGIN\r\n", timeout),
+         {:ok, [334, "334 UGFzc3dvcmQ6\r\n"]} <- request(socket, username64, timeout),
+         {:ok, [235 | _lines]} <- request(socket, password64, timeout) do
+      :ok
+    else
+      {:ok, [code | lines]} -> smtp_error(code, lines)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def auth(socket, :plain, opts, timeout) do
+    username = Keyword.fetch!(opts, :username)
+    password = Keyword.fetch!(opts, :password)
+
+    cmd = ["AUTH PLAIN ", Base.encode64(<<0, username::bytes, 0, password::bytes>>) | "\r\n"]
+
+    with {:ok, response} <- request(socket, cmd, timeout) do
+      case response do
+        [235 | _lines] -> :ok
+        [code | lines] -> smtp_error(code, lines)
+      end
+    end
   end
 
   @doc """
