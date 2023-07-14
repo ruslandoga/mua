@@ -1,9 +1,7 @@
+# copied from Mint.Core.Transport.SSL
+# https://github.com/elixir-mint/mint/blob/371f4d7bffc26a779ac7675ae75f89d17519bfa9/lib/mint/core/transport/ssl.ex
 defmodule Mua.SSL do
   @moduledoc false
-
-  # lifted from Mint.Core.Transport.SSL
-  # https://github.com/elixir-mint/mint/blob/371f4d7bffc26a779ac7675ae75f89d17519bfa9/lib/mint/core/transport/ssl.ex
-
   require Record
 
   # From RFC7540 appendix A
