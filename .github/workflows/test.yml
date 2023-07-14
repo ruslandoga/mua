@@ -13,7 +13,7 @@ jobs:
       MIX_ENV: test
 
     services:
-      clickhouse:
+      mailhog:
         image: mailhog/mailhog:latest
         ports:
           - 1025:1025
