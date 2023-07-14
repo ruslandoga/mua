@@ -11,6 +11,7 @@ defmodule Mua do
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
   @type host :: :inet.socket_address() | :inet.hostname() | String.t()
   @type proto :: :tcp | :ssl
+  @type error :: {:error, Mua.SMTPError.t() | Mua.TransportError.t()}
 
   @default_timeout :timer.seconds(30)
 
@@ -77,7 +78,7 @@ defmodule Mua do
           recipients :: [String.t()],
           message :: iodata,
           opts :: keyword
-        ) :: {:ok, receipt :: String.t()} | {:error, any}
+        ) :: {:ok, receipt :: String.t()} | error
   def easy_send(host, sender, recipients, message, opts \\ []) do
     fqdn =
       if fqdn = opts[:fqdn] do
@@ -115,19 +116,20 @@ defmodule Mua do
 
       {:error, %Mua.SMTPError{code: code} = error}
       when hosts != [] and code in [421, 450, 451, 452] ->
-        Logger.error("failed to send email to #{host}:\n" <> Exception.message(error))
+        Logger.error("failed to send email to #{host} with reason: " <> Exception.message(error))
         easy_send_any(hosts, fqdn, sender, recipients, message, opts)
 
       # other smtp errors are not retriable
       {:error, %Mua.SMTPError{}} = error ->
         error
 
-      # non-smtp errors are transport errors and can be retried
-      {:error, reason} when hosts != [] ->
-        Logger.error("failed to send email to #{host} with reason #{inspect(reason)}")
+      # transport errors can be retried
+      {:error, %Mua.TransportError{} = reason} when hosts != [] ->
+        Logger.error("failed to send email to #{host} with reason: " <> Exception.message(reason))
         easy_send_any(hosts, fqdn, sender, recipients, message, opts)
 
-      {:error, _reason} = error ->
+      # if there are no more hosts to try, we just return the error
+      {:error, %Mua.TransportError{}} = error ->
         error
     end
   end
@@ -162,7 +164,7 @@ defmodule Mua do
 
   defp many_rcpt_to([], _socket, _timeout), do: :ok
 
-  @spec ehlo_or_helo(socket, String.t(), timeout) :: {:ok, [String.t()]} | {:error, any}
+  @spec ehlo_or_helo(socket, String.t(), timeout) :: {:ok, [String.t()]} | error
   defp ehlo_or_helo(socket, hostname, timeout) do
     with {:error, %Mua.SMTPError{code: 500}} <- ehlo(socket, hostname, timeout),
          :ok <- helo(socket, hostname, timeout),
@@ -170,7 +172,7 @@ defmodule Mua do
   end
 
   @spec maybe_starttls(proto, [String.t()], socket, String.t(), keyword, timeout) ::
-          {:ok, socket} | {:error, any}
+          {:ok, socket} | error
   defp maybe_starttls(protocol, extensions, socket, host, opts, timeout) do
     if protocol == :tcp and "STARTTLS" in extensions do
       starttls(socket, host, opts, timeout)
@@ -179,7 +181,7 @@ defmodule Mua do
     end
   end
 
-  @spec maybe_auth([String.t()], socket, keyword | nil, timeout) :: :ok | {:error, any}
+  @spec maybe_auth([String.t()], socket, keyword | nil, timeout) :: :ok | error
   defp maybe_auth(_extensions, _socket, _no_auth = nil, _timeout), do: :ok
 
   defp maybe_auth(extensions, socket, auth_creds, timeout) do
@@ -201,7 +203,7 @@ defmodule Mua do
           opts :: keyword,
           timeout
         ) ::
-          {:ok, socket, banner :: String.t()} | {:error, any}
+          {:ok, socket, banner :: String.t()} | error
   def connect(protocol, address, port, opts \\ [], timeout \\ @default_timeout) do
     inet6? = Keyword.get(opts, :inet6, false)
     opts = Keyword.drop(opts, [:timeout, :inet6, :mode, :active, :packet])
@@ -242,15 +244,11 @@ defmodule Mua do
           {:ok, socket, IO.iodata_to_binary(lines)}
 
         [code | lines] ->
-          # TODO need QUIT?
-          with {:error, reason} <- close(socket) do
-            Logger.warning(
-              "failed to close socket on failed greeting, reason: #{inspect(reason)}"
-            )
-          end
-
+          :ok = close(socket)
           smtp_error(code, lines)
       end
+    else
+      {:error, reason} -> transport_error(reason)
     end
   end
 
@@ -260,9 +258,15 @@ defmodule Mua do
       :ok = close(socket)
 
   """
-  @spec close(socket) :: :ok | {:error, any}
+  @spec close(socket) :: :ok | {:error, Mua.TransportError.t()}
   def close(socket) when is_port(socket), do: :gen_tcp.close(socket)
-  def close(socket), do: :ssl.close(socket)
+
+  def close(socket) do
+    case :ssl.close(socket) do
+      :ok = ok -> ok
+      {:error, reason} -> transport_error(reason)
+    end
+  end
 
   @doc """
   Sends `EHLO` command which provides the identification of the sender i.e. the host name,
@@ -271,7 +275,7 @@ defmodule Mua do
       {:ok, _extensions = ["STARTTLS" | _rest]} = ehlo(socket, _our_hostname = "copycat.fun")
 
   """
-  @spec ehlo(socket, String.t(), timeout) :: {:ok, [String.t()]} | {:error, Exception.t()}
+  @spec ehlo(socket, String.t(), timeout) :: {:ok, [String.t()]} | error
   def ehlo(socket, hostname, timeout \\ @default_timeout) when is_binary(hostname) do
     with {:ok, response} <- request(socket, ["EHLO ", hostname | "\r\n"], timeout) do
       case response do
@@ -298,7 +302,7 @@ defmodule Mua do
       :ok = helo(socket, _our_hostname = "copycat.fun")
 
   """
-  @spec helo(socket, String.t(), timeout) :: :ok | {:error, any}
+  @spec helo(socket, String.t(), timeout) :: :ok | error
   def helo(socket, hostname, timeout \\ @default_timeout) when is_binary(hostname) do
     with {:ok, response} <- request(socket, ["HELO ", hostname | "\r\n"], timeout) do
       case response do
@@ -315,13 +319,16 @@ defmodule Mua do
 
   """
   @spec starttls(:gen_tcp.socket(), host, keyword, timeout) ::
-          {:ok, :ssl.sslsocket()} | {:error, any}
+          {:ok, :ssl.sslsocket()} | error
   def starttls(socket, address, opts \\ [], timeout \\ @default_timeout) when is_port(socket) do
     with {:ok, response} <- request(socket, "STARTTLS\r\n", timeout) do
       case response do
         [220 | _lines] ->
-          with :ok <- :inet.setopts(socket, active: false) do
-            :ssl.connect(socket, Mua.SSL.opts(address, opts), timeout)
+          with :ok <- :inet.setopts(socket, active: false),
+               {:ok, _socket} = ok <- :ssl.connect(socket, Mua.SSL.opts(address, opts), timeout) do
+            ok
+          else
+            {:error, reason} -> transport_error(reason)
           end
 
         [code | lines] ->
@@ -364,7 +371,7 @@ defmodule Mua do
       :ok = auth(socket, :plain, username: username, password: password)
 
   """
-  @spec auth(socket, auth_method, keyword, timeout) :: :ok | {:error, any}
+  @spec auth(socket, auth_method, keyword, timeout) :: :ok | error
   def auth(socket, kind, opts \\ [], timeout \\ @default_timeout)
 
   def auth(socket, :login, opts, timeout) do
@@ -403,7 +410,7 @@ defmodule Mua do
       :ok = mail_from(socket, "hey@copycat.fun")
 
   """
-  @spec mail_from(socket, String.t(), timeout) :: :ok | {:error, any}
+  @spec mail_from(socket, String.t(), timeout) :: :ok | error
   def mail_from(socket, address, timeout \\ @default_timeout) do
     with {:ok, response} <- request(socket, ["MAIL FROM: ", quoteaddr(address) | "\r\n"], timeout) do
       case response do
@@ -419,7 +426,7 @@ defmodule Mua do
       :ok = rcpt_to(socket, "world@hey.com")
 
   """
-  @spec rcpt_to(socket, String.t(), timeout) :: :ok | {:error, any}
+  @spec rcpt_to(socket, String.t(), timeout) :: :ok | error
   def rcpt_to(socket, address, timeout \\ @default_timeout) do
     with {:ok, response} <- request(socket, ["RCPT TO: ", quoteaddr(address) | "\r\n"], timeout) do
       case response do
@@ -435,21 +442,14 @@ defmodule Mua do
       {:ok, _receipt} = data(socket, "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n...")
 
   """
-  @spec data(socket, iodata, timeout) :: {:ok, receipt :: String.t()} | {:error, any}
+  @spec data(socket, iodata, timeout) :: {:ok, receipt :: String.t()} | error
   def data(socket, message, timeout \\ @default_timeout) do
-    with {:ok, response} <- request(socket, "DATA\r\n", timeout) do
-      case response do
-        [354 | _lines] ->
-          with {:ok, response} <- request(socket, [message | "\r\n.\r\n"], timeout) do
-            case response do
-              [250 | lines] -> {:ok, IO.iodata_to_binary(lines)}
-              [code | lines] -> smtp_error(code, lines)
-            end
-          end
-
-        [code | lines] ->
-          smtp_error(code, lines)
-      end
+    with {:ok, [354 | _lines]} <- request(socket, "DATA\r\n", timeout),
+         {:ok, [250 | lines]} <- request(socket, [message | "\r\n.\r\n"], timeout) do
+      {:ok, IO.iodata_to_binary(lines)}
+    else
+      {:ok, [code | lines]} -> smtp_error(code, lines)
+      {:error, _reason} = error -> error
     end
   end
 
@@ -459,7 +459,7 @@ defmodule Mua do
       {:ok, true} = vrfy(socket, "dogaruslan@gmail.com")
 
   """
-  @spec vrfy(socket, String.t(), timeout) :: {:ok, boolean} | {:error, any}
+  @spec vrfy(socket, String.t(), timeout) :: {:ok, boolean} | error
   def vrfy(socket, address, timeout \\ @default_timeout) do
     with {:ok, response} <- request(socket, ["VRFY ", quoteaddr(address) | "\r\n"], timeout) do
       case response do
@@ -476,7 +476,7 @@ defmodule Mua do
       :ok = rset(socket)
 
   """
-  @spec rset(socket, timeout) :: :ok | {:error, any}
+  @spec rset(socket, timeout) :: :ok | error
   def rset(socket, timeout \\ @default_timeout) do
     with {:ok, response} <- request(socket, "RSET\r\n", timeout) do
       case response do
@@ -492,7 +492,7 @@ defmodule Mua do
       :ok = noop(socket)
 
   """
-  @spec noop(socket, timeout) :: :ok | {:error, any}
+  @spec noop(socket, timeout) :: :ok | error
   def noop(socket, timeout \\ @default_timeout) do
     with {:ok, response} <- request(socket, "NOOP\r\n", timeout) do
       case response do
@@ -508,7 +508,7 @@ defmodule Mua do
       :ok = quit(socket)
 
   """
-  @spec quit(socket, timeout) :: :ok | {:error, Exception.t()}
+  @spec quit(socket, timeout) :: :ok | error
   def quit(socket, timeout \\ @default_timeout) do
     with {:ok, response} <- request(socket, "QUIT\r\n", timeout) do
       case response do
@@ -552,12 +552,21 @@ defmodule Mua do
 
   @compile inline: [request: 3]
   defp request(socket, data, timeout) do
-    with :ok <- send(socket, data), do: recv_all(socket, timeout)
+    with :ok <- send(socket, data), {:ok, _lines} = ok <- recv_all(socket, timeout) do
+      ok
+    else
+      {:error, reason} -> transport_error(reason)
+    end
   end
 
   @compile inline: [smtp_error: 2]
   defp smtp_error(code, lines) do
     {:error, Mua.SMTPError.exception(code: code, lines: lines)}
+  end
+
+  @compile inline: [transport_error: 1]
+  defp transport_error(reason) do
+    {:error, Mua.TransportError.exception(reason: reason)}
   end
 
   # TODO implement proper RFC2822
