@@ -34,7 +34,7 @@ defmodule Mua.TransportError do
   # error (at least since OTP 19+), so we can just use that.
   defp format_reason(reason) do
     case :ssl.format_error(reason) do
-      'Unexpected error:' ++ _ -> inspect(reason)
+      ~c"Unexpected error:" ++ _ -> inspect(reason)
       message -> List.to_string(message)
     end
   end
