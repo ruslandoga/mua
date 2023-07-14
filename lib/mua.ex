@@ -137,12 +137,13 @@ defmodule Mua do
     proto = opts[:protocol] || :tcp
     timeout = opts[:timeout] || @default_timeout
     sock_opts = opts[:transport_opts] || []
+    auth_creds = opts[:auth]
 
     with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
       try do
         with {:ok, extensions} <- ehlo_or_helo(socket, fqdn, timeout),
              {:ok, socket} <- maybe_starttls(proto, extensions, socket, host, sock_opts, timeout),
-             :ok <- maybe_auth(extensions, socket, opts, timeout),
+             :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
              :ok <- mail_from(socket, sender, timeout),
              :ok <- many_rcpt_to(recipients, socket, timeout),
              {:ok, _receipt} = ok <- data(socket, message, timeout) do
@@ -178,16 +179,12 @@ defmodule Mua do
     end
   end
 
-  @spec maybe_auth([String.t()], socket, keyword, timeout) :: :ok | {:error, any}
-  defp maybe_auth(extensions, socket, opts, timeout) do
-    if method = pick_auth_method(extensions) do
-      username = opts[:username]
-      password = opts[:password]
+  @spec maybe_auth([String.t()], socket, keyword | nil, timeout) :: :ok | {:error, any}
+  defp maybe_auth(_extensions, _socket, _no_auth = nil, _timeout), do: :ok
 
-      if username && password do
-        auth(socket, method, opts, timeout)
-      end
-    end || :ok
+  defp maybe_auth(extensions, socket, auth_creds, timeout) do
+    method = pick_auth_method(extensions) || :plain
+    auth(socket, method, auth_creds, timeout)
   end
 
   @doc """

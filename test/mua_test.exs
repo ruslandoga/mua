@@ -53,8 +53,7 @@ defmodule MuaTest do
                  message,
                  port: 1025,
                  timeout: :timer.seconds(1),
-                 username: "ruslandoga",
-                 password: "swortfish"
+                 auth: [username: "ruslandoga", password: "secret"]
                )
     end
   end
