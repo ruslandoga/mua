@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- do `EHLO` or `HELO` after `STARTTLS` https://github.com/ruslandoga/mua/pull/7
+
 ## v0.1.3 (2023-07-14)
 
 - add `Mua.TransportError` like in [Mint](https://github.com/elixir-mint/mint/blob/main/lib/mint/transport_error.ex) https://github.com/ruslandoga/mua/pull/6

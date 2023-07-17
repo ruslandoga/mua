@@ -145,6 +145,7 @@ defmodule Mua do
       try do
         with {:ok, extensions} <- ehlo_or_helo(socket, fqdn, timeout),
              {:ok, socket} <- maybe_starttls(proto, extensions, socket, host, sock_opts, timeout),
+             {:ok, extensions} <- ehlo_or_helo(socket, fqdn, timeout),
              :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
              :ok <- mail_from(socket, sender, timeout),
              :ok <- many_rcpt_to(recipients, socket, timeout),
