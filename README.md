@@ -10,9 +10,9 @@ Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.
 ### Features
 
 - Direct messaging (no relays)
+- Inderect messaging (through relays)
 - Minimal API
-
-Your ideas are welcome [here.](https://github.com/ruslandoga/mua/issues/2)
+- Processless
 
 ## Installation
 
