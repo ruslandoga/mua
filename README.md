@@ -70,7 +70,12 @@ Low-level API:
 [host | _rest] = Mua.mxlookup("gmail.com")
 {:ok, socket, _banner} = Mua.connect(:tcp, host, _port = 25)
 
-{:ok, our_hostname} = Mua.guess_fqdn()
+our_hostname =
+  case Mua.guess_fqdn() do
+    {:ok, guessed} -> guessed
+    {:error, _posix} -> "copycat.fun" # same as in MAIL FROM
+  end
+
 {:ok, extensions} = Mua.ehlo(socket, our_hostname)
 
 true = "STARTTLS" in extensions
