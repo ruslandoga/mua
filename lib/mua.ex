@@ -61,6 +61,42 @@ defmodule Mua do
   end
 
   @doc """
+  Same as `easy_send/4` but the first argument is a URL that configures everything.
+
+      {:ok, _receipt} =
+        easy_send(
+          _url = "tcp://gmail.com:25?from=ruslan%40copycat.fun&to=dogaruslan%40gmail.com",
+          _message = "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n..."
+        )
+
+  Some URL examples:
+
+      _submission_port = "tcp://username:password@smtp.mailgun.com:587?from=ruslan%40copycat.fun&to=dogaruslan%40gmail.com"
+      _ssl_port = "ssl://username:password@smtp.mailgun.com:465?from=ruslan%40copycat.fun&to=dogaruslan%40gmail.com"
+
+  """
+  def easy_send(url, message) do
+    %URI{scheme: scheme, host: host, port: port, userinfo: userinfo, query: query} =
+      URI.parse(url)
+
+    scheme =
+      case scheme do
+        "tcp" -> :tcp
+        "ssl" -> :ssl
+      end
+
+    auth =
+      if userinfo do
+        [username, password] = String.split(userinfo, ":")
+        [username: username, password: password]
+      end
+
+    %{"from" => sender, "to" => recipients} = URI.decode_query(query)
+    recipients = String.split(recipients, ",")
+    easy_send(host, sender, recipients, message, protocol: scheme, port: port, auth: auth)
+  end
+
+  @doc """
   Utility function to send a message to a list of recipients on a host.
 
       {:ok, _receipt} =
