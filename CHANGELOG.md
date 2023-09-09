@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.4 (2023-09-09)
 
 - do `EHLO` or `HELO` after `STARTTLS` https://github.com/ruslandoga/mua/pull/7
 
