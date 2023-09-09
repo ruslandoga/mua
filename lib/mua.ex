@@ -89,11 +89,15 @@ defmodule Mua do
             fqdn
 
           {:error, reason} ->
-            Logger.warning(
-              ~s[failed to guess local FQDN with reason #{inspect(reason)}, using "localhost" instead]
-            )
+            [_, domain] = String.split(sender, "@")
+            fqdn = String.trim_trailing(domain, ">")
 
-            "localhost"
+            Logger.warning("""
+            failed to guess local FQDN with reason #{inspect(reason)}, using #{inspect(fqdn)} instead; \
+            you can provide a custom FQDN with `:fqdn` option\
+            """)
+
+            fqdn
         end
       end
 
