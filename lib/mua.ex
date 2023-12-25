@@ -4,16 +4,38 @@ defmodule Mua do
   """
 
   import Kernel, except: [send: 2]
-  require Logger
 
   @dialyzer :no_improper_lists
 
-  @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
-  @type host :: :inet.socket_address() | :inet.hostname() | String.t()
   @type proto :: :tcp | :ssl
+  @type host :: :inet.socket_address() | :inet.hostname() | String.t()
+  @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
+  @type transport_opts :: [:gen_tcp.connect_option() | :ssl.tls_client_option()]
   @type error :: {:error, Mua.SMTPError.t() | Mua.TransportError.t()}
+  @type option ::
+          {:timeout, timeout}
+          | {:protocol, proto}
+          | {:port, :inet.port_number()}
+          | {:auth, [username: String.t(), passowrd: String.t()]}
+          | {:transport_opts, transport_opts}
 
   @default_timeout :timer.seconds(30)
+
+  require Record
+  Record.defrecordp(:hostent, Record.extract(:hostent, from_lib: "kernel/include/inet.hrl"))
+
+  @doc """
+  Utility function to guess the local hostname to use for HELO/EHLO.
+
+      {:ok, "mac3"} = guess_sender_hostname()
+
+  """
+  @spec guess_sender_hostname :: {:ok, String.t()} | {:error, :inet.posix()}
+  def guess_sender_hostname do
+    with {:ok, hostname} <- :inet.gethostname(),
+         {:ok, hostent(h_name: hostname)} <- :inet.gethostbyname(hostname),
+         do: {:ok, List.to_string(hostname)}
+  end
 
   @doc """
   Utility function to lookup MX servers for a domain.
@@ -24,40 +46,17 @@ defmodule Mua do
   @spec mxlookup(String.t()) :: [String.t()]
   def mxlookup(domain) when is_binary(domain) do
     # TODO need it?
-    case :erlang.whereis(:inet_db) do
-      p when is_pid(p) -> :ok
-      _ -> :inet_db.start()
-    end
-
-    # TODO need it?
-    case :lists.keyfind(:nameserver, 1, :inet_db.get_rc()) do
-      false ->
-        # we got no nameservers configured, suck in resolv.conf
-        :inet_config.do_load_resolv(:os.type(), :longnames)
-
-      _ ->
-        :ok
-    end
+    # case :lists.keyfind(:nameserver, 1, :inet_db.get_rc()) do
+    #   false ->
+    #     # we got no nameservers configured, suck in resolv.conf
+    #     :inet_config.do_load_resolv(:os.type(), :longnames)
+    #   _ ->
+    #     :ok
+    # end
 
     :inet_res.lookup(to_charlist(domain), :in, :mx)
     |> :lists.sort()
     |> Enum.map(fn {_, host} -> List.to_string(host) end)
-  end
-
-  require Record
-  Record.defrecordp(:hostent, Record.extract(:hostent, from_lib: "kernel/include/inet.hrl"))
-
-  @doc """
-  Utility function to guess the local FQDN.
-
-      {:ok, "mac3"} = guess_fqdn()
-
-  """
-  @spec guess_fqdn :: {:ok, String.t()} | {:error, :inet.posix()}
-  def guess_fqdn do
-    with {:ok, hostname} <- :inet.gethostname(),
-         {:ok, hostent(h_name: fqdn)} <- :inet.gethostbyname(hostname),
-         do: {:ok, List.to_string(fqdn)}
   end
 
   @doc """
@@ -66,79 +65,46 @@ defmodule Mua do
       {:ok, _receipt} =
         easy_send(
           _host = "gmail.com",
-          _sender = "hey@copycat.fun",
-          _recipients = ["dogaruslan@gmail.com"],
+          _sender = "mua@github.com",
+          _recipients = ["support@gmail.com"],
           _message = "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n..."
         )
 
   """
-  @spec easy_send(
-          host,
-          sender :: String.t(),
-          recipients :: [String.t()],
-          message :: iodata,
-          opts :: keyword
-        ) :: {:ok, receipt :: String.t()} | error
+  @spec easy_send(String.t() | :inet.ip_address(), String.t(), [String.t()], iodata, [option]) ::
+          {:ok, receipt :: String.t()} | error
   def easy_send(host, sender, recipients, message, opts \\ []) do
-    fqdn =
-      if fqdn = opts[:fqdn] do
-        fqdn
-      else
-        case guess_fqdn() do
-          {:ok, fqdn} ->
-            fqdn
-
-          {:error, reason} ->
-            [_, domain] = String.split(sender, "@")
-            fqdn = String.trim_trailing(domain, ">")
-
-            Logger.warning("""
-            failed to guess local FQDN with reason #{inspect(reason)}, using #{inspect(fqdn)} instead; \
-            you can provide a custom FQDN with `:fqdn` option\
-            """)
-
-            fqdn
-        end
-      end
-
-    hosts =
-      with [] <- mxlookup(host) do
-        Logger.warning(
-          "failed to lookup MX records for #{host}, will try connecting to #{host} directly"
-        )
-
-        [host]
-      end
-
-    easy_send_any(hosts, fqdn, sender, recipients, message, opts)
+    [_, sender_hostname] = String.split(sender, "@")
+    hosts = with [] <- mxlookup(host), do: [host]
+    easy_send_any(hosts, sender_hostname, sender, recipients, message, opts)
   end
 
-  defp easy_send_any([host | hosts], fqdn, sender, recipients, message, opts) do
-    case easy_send_one(host, fqdn, sender, recipients, message, opts) do
+  defp easy_send_any([host | hosts], helo, sender, recipients, message, opts) do
+    case easy_send_one(host, helo, sender, recipients, message, opts) do
       {:ok, _receipt} = ok ->
         ok
 
-      {:error, %Mua.SMTPError{code: code} = error}
+      {:error, %Mua.SMTPError{code: code}}
       when hosts != [] and code in [421, 450, 451, 452] ->
-        Logger.error("failed to send email to #{host} with reason: " <> Exception.message(error))
-        easy_send_any(hosts, fqdn, sender, recipients, message, opts)
+        easy_send_any(hosts, helo, sender, recipients, message, opts)
 
       # other smtp errors are not retriable
       {:error, %Mua.SMTPError{}} = error ->
         error
 
       # transport errors can be retried
-      {:error, %Mua.TransportError{} = reason} when hosts != [] ->
-        Logger.error("failed to send email to #{host} with reason: " <> Exception.message(reason))
-        easy_send_any(hosts, fqdn, sender, recipients, message, opts)
+      {:error, %Mua.TransportError{}} when hosts != [] ->
+        easy_send_any(hosts, helo, sender, recipients, message, opts)
 
-      # if there are no more hosts to try, we just return the error
+      # if there are no more hosts to try, we return the error
       {:error, %Mua.TransportError{}} = error ->
         error
     end
   end
 
-  defp easy_send_one(host, fqdn, sender, recipients, message, opts) do
+  # TODO build %Mua.Result{} with what has happened on the connection (tls or not, etc.)
+
+  defp easy_send_one(host, helo, sender, recipients, message, opts) do
     port = opts[:port] || 25
     proto = opts[:protocol] || :tcp
     timeout = opts[:timeout] || @default_timeout
@@ -147,9 +113,9 @@ defmodule Mua do
 
     with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
       try do
-        with {:ok, extensions} <- ehlo_or_helo(socket, fqdn, timeout),
-             {:ok, socket} <- maybe_starttls(proto, extensions, socket, host, sock_opts, timeout),
-             {:ok, extensions} <- ehlo_or_helo(socket, fqdn, timeout),
+        with {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
+             {:ok, socket} <- maybe_starttls(socket, extensions, host, sock_opts, timeout),
+             {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
              :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
              :ok <- mail_from(socket, sender, timeout),
              :ok <- many_rcpt_to(recipients, socket, timeout),
@@ -176,10 +142,10 @@ defmodule Mua do
          do: {:ok, []}
   end
 
-  @spec maybe_starttls(proto, [String.t()], socket, String.t(), keyword, timeout) ::
+  @spec maybe_starttls(socket, [String.t()], String.t(), transport_opts(), timeout) ::
           {:ok, socket} | error
-  defp maybe_starttls(protocol, extensions, socket, host, opts, timeout) do
-    if protocol == :tcp and "STARTTLS" in extensions do
+  defp maybe_starttls(socket, extensions, host, opts, timeout) do
+    if is_port(socket) and "STARTTLS" in extensions do
       starttls(socket, host, opts, timeout)
     else
       {:ok, socket}
@@ -201,13 +167,7 @@ defmodule Mua do
       {:ok, socket, _banner} = connect(:ssl, host, _port = 465, versions: [:"tlsv1.3"])
 
   """
-  @spec connect(
-          proto,
-          :inet.socket_address() | :inet.hostname() | String.t(),
-          :inet.port_number(),
-          opts :: keyword,
-          timeout
-        ) ::
+  @spec connect(proto, host, :inet.port_number(), transport_opts(), timeout) ::
           {:ok, socket, banner :: String.t()} | error
   def connect(protocol, address, port, opts \\ [], timeout \\ @default_timeout) do
     inet6? = Keyword.get(opts, :inet6, false)
@@ -323,7 +283,7 @@ defmodule Mua do
       {:ok, sslsocket} = starttls(socket, host, versions: [:"tlsv1.3"])
 
   """
-  @spec starttls(:gen_tcp.socket(), host, keyword, timeout) ::
+  @spec starttls(:gen_tcp.socket(), host, transport_opts(), timeout) ::
           {:ok, :ssl.sslsocket()} | error
   def starttls(socket, address, opts \\ [], timeout \\ @default_timeout) when is_port(socket) do
     with {:ok, response} <- request(socket, "STARTTLS\r\n", timeout) do
@@ -575,8 +535,6 @@ defmodule Mua do
   end
 
   # TODO implement proper RFC2822
-  defp quoteaddr(""), do: "<>"
-
   defp quoteaddr(address) when is_binary(address) do
     if String.ends_with?(address, ">") do
       address
