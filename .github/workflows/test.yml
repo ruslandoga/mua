@@ -1,4 +1,4 @@
-name: test
+name: mix
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
     branches: [master]
 
 jobs:
-  mix:
+  test:
     runs-on: ubuntu-latest
 
     env:
@@ -17,6 +17,7 @@ jobs:
         image: mailhog/mailhog:latest
         ports:
           - 1025:1025
+          - 8025:8025
         env:
           options: >-
             --health-cmd nc -zw3 localhost 1025
@@ -26,7 +27,7 @@ jobs:
 
     strategy:
       matrix:
-        elixir: ["1.14", "1.15"]
+        elixir: ["1.14", "1.15", "1.16"]
         otp: ["25", "26"]
 
     steps:
@@ -48,6 +49,15 @@ jobs:
             test-otp-${{ matrix.otp }}-elixir-${{ matrix.elixir }}-ref-refs/heads/master-mix-
 
       - run: mix deps.get --only $MIX_ENV
-      - run: mix format --check-formatted
       - run: mix compile --warnings-as-errors
       - run: mix test
+
+  format:
+    runs-on: ubuntu-latest 
+    steps:
+      - uses: actions/checkout@v4 
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.16"
+          otp-version: "26"
+      - run: mix format --check-formatted

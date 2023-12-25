@@ -34,7 +34,7 @@ defmodule Mua.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger, :ssl]
+      extra_applications: [:ssl]
     ]
   end
 
@@ -53,7 +53,8 @@ defmodule Mua.MixProject do
     [
       {:castore, "~> 0.1.0 or ~> 1.0", optional: true},
       {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.29", only: :dev}
+      {:ex_doc, "~> 0.29", only: :dev},
+      {:req, "~> 0.4.8", only: :test}
     ]
   end
 end

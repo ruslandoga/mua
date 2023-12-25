@@ -1,132 +1,6 @@
 defmodule MuaTest do
   use ExUnit.Case, async: true
 
-  describe "easy_send" do
-    @describetag :mailhog
-
-    setup do
-      now = DateTime.utc_now()
-
-      message = """
-      Date: #{Calendar.strftime(now, "%a, %d %b %Y %H:%M:%S %z")}\r
-      From: Ruslan <hey@copycat.fun>\r
-      Subject: Hey!\r
-      To: Ruslan <dogaruslan@gmail.com>\r
-      \r
-      How was your day? Long time no see!\r
-      .\r
-      """
-
-      {:ok, message: message}
-    end
-
-    test "one recipient", %{message: message} do
-      assert {:ok, _receipt} =
-               Mua.easy_send(
-                 "localhost",
-                 "hey@copycat.fun",
-                 ["dogaruslan@gmail.com"],
-                 message,
-                 port: 1025,
-                 timeout: :timer.seconds(1)
-               )
-    end
-
-    test "multiple recipients", %{message: message} do
-      assert {:ok, _receipt} =
-               Mua.easy_send(
-                 "localhost",
-                 "hey@copycat.fun",
-                 ["dogaruslan@gmail.com", _bcc = "ruslandoga@gmail.com"],
-                 message,
-                 port: 1025,
-                 timeout: :timer.seconds(1)
-               )
-    end
-
-    test "auth", %{message: message} do
-      assert {:ok, _receipt} =
-               Mua.easy_send(
-                 "localhost",
-                 "hey@copycat.fun",
-                 ["dogaruslan@gmail.com", _bcc = "ruslandoga@gmail.com"],
-                 message,
-                 port: 1025,
-                 timeout: :timer.seconds(1),
-                 auth: [username: "ruslandoga", password: "secret"]
-               )
-    end
-  end
-
-  describe "mxlookup" do
-    @tag :online
-    test "gmail.com" do
-      assert Mua.mxlookup("gmail.com") == [
-               "gmail-smtp-in.l.google.com",
-               "alt1.gmail-smtp-in.l.google.com",
-               "alt2.gmail-smtp-in.l.google.com",
-               "alt3.gmail-smtp-in.l.google.com",
-               "alt4.gmail-smtp-in.l.google.com"
-             ]
-    end
-
-    test "localhost (when mx record is not set)" do
-      assert Mua.mxlookup("localhost") == []
-    end
-  end
-
-  describe "connect/close" do
-    @describetag :online
-
-    test "tcp" do
-      assert {:ok, socket, _banner} = Mua.connect(:tcp, "smtp.google.com", 25)
-      assert :ok = Mua.close(socket)
-    end
-
-    test "ssl" do
-      assert {:ok, socket, _banner} = Mua.connect(:ssl, "smtp.gmail.com", 465)
-      assert :ok = Mua.close(socket)
-    end
-  end
-
-  describe "ehlo/helo" do
-    @describetag :online
-
-    setup do
-      assert {:ok, socket, _banner} = Mua.connect(:tcp, "smtp.gmail.com", 25)
-      on_exit(fn -> :ok = Mua.close(socket) end)
-      {:ok, socket: socket}
-    end
-
-    test "ehlo", %{socket: socket} do
-      assert {:ok, extensions} = Mua.ehlo(socket, fqdn_or_localhost())
-      assert "STARTTLS" in extensions
-    end
-
-    test "helo", %{socket: socket} do
-      assert :ok = Mua.helo(socket, fqdn_or_localhost())
-    end
-  end
-
-  describe "starttls" do
-    @describetag :online
-
-    setup do
-      assert {:ok, socket, _banner} = Mua.connect(:tcp, "smtp.gmail.com", 25)
-      on_exit(fn -> :ok = Mua.close(socket) end)
-
-      assert {:ok, extensions} = Mua.ehlo(socket, fqdn_or_localhost())
-      assert "STARTTLS" in extensions
-
-      {:ok, socket: socket}
-    end
-
-    test "from tcp/25", %{socket: socket} do
-      assert {:ok, socket} = Mua.starttls(socket, "smtp.gmail.com")
-      assert {:ok, _cert} = :ssl.peercert(socket)
-    end
-  end
-
   describe "pick_auth_method/1" do
     test "no AUTH extension" do
       extensions = [
@@ -185,10 +59,64 @@ defmodule MuaTest do
     end
   end
 
-  defp fqdn_or_localhost do
-    case Mua.guess_fqdn() do
-      {:ok, fqdn} -> fqdn
-      {:error, _reason} -> "localhost"
-    end
+  test "guess_sender_hostname/0" do
+    os_hostname =
+      case System.cmd("hostname", ["--fqdn"]) do
+        {os_hostname, 0} ->
+          String.trim(os_hostname)
+
+        {_, 1} ->
+          {os_hostname, 0} = System.cmd("hostname", [])
+          String.trim(os_hostname)
+      end
+
+    assert {:ok, ^os_hostname} = Mua.guess_sender_hostname()
+  end
+
+  test "transport_error message" do
+    assert Exception.message(Mua.TransportError.exception(reason: :timeout)) == "timeout"
+    assert Exception.message(Mua.TransportError.exception(reason: :closed)) == "socket closed"
+
+    assert Exception.message(Mua.TransportError.exception(reason: :nxdomain)) ==
+             "non-existing domain"
+
+    assert Exception.message(Mua.TransportError.exception(reason: :econnrefused)) ==
+             "connection refused"
+
+    assert Exception.message(Mua.TransportError.exception(reason: :mua_sad)) ==
+             ":mua_sad"
+  end
+
+  test "smtp_error message" do
+    assert Exception.message(Mua.SMTPError.exception(code: 123, lines: ["a\n", "b"])) == "a\nb"
+  end
+
+  test "default ssl opts" do
+    assert [
+             {:ciphers, ciphers},
+             {:customize_hostname_check, [match_fun: match_fun]},
+             {:partial_chain, partial_chain},
+             {:cacertfile, cacertfile},
+             {:server_name_indication, ~c"smtp.gmail.com"},
+             {:versions, [:"tlsv1.3", :"tlsv1.2"]},
+             {:verify, :verify_peer},
+             {:depth, 4},
+             {:secure_renegotiate, true},
+             {:reuse_sessions, true}
+           ] = Mua.SSL.opts("smtp.gmail.com")
+
+    assert String.ends_with?(inspect(match_fun), ":public_key.pkix_verify_hostname_match_fun/1>")
+    assert String.ends_with?(inspect(partial_chain), "Mua.SSL.add_partial_chain_fun/1>")
+    assert String.ends_with?(cacertfile, "/lib/castore/priv/cacerts.pem")
+    assert length(ciphers) == 63
+  end
+
+  test "ssl opts when host is ip addr" do
+    assert_raise ArgumentError,
+                 "the :hostname option is required when address is not a binary",
+                 fn -> Mua.SSL.opts({127, 0, 0, 1}) end
+
+    opts = Mua.SSL.opts({127, 0, 0, 1}, hostname: "smtp.gmail.com")
+    assert Keyword.fetch!(opts, :server_name_indication) == ~c"smtp.gmail.com"
   end
 end

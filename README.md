@@ -10,7 +10,7 @@ Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.
 ### Features
 
 - Direct messaging (no relays)
-- Inderect messaging (through relays)
+- Inderect messaging (relays)
 - Minimal API
 - Processless
 
@@ -26,75 +26,68 @@ end
 
 ## Usage
 
-Single command high-level API:
+This demo will use [MailHog:](https://github.com/mailhog/MailHog)
+
+```console
+$ docker run -d --rm -p 1025:1025 -p 8025:8025 --name mailhog mailhog/mailhog
+$ open http://localhost:8025
+```
+
+High-level API:
 
 ```elixir
-# MAIL FROM:
-from = "hey@copycat.fun"
-
-# RCPT TO:
-recipients = [
-  "dogaruslan@gmail.com",
-  "ruslan.doga@ya.ru"
-]
-
-# check out these packages for message encoding:
-# - https://hex.pm/packages/mail
-# - https://hex.pm/packages/mailibex
 message = """
-Date: Sat, 24 Jun 2023 13:43:57 +0000\r
-From: Ruslan <hey@copycat.fun>\r
+Date: Mon, 25 Dec 2023 06:52:15 +0000\r
+From: Mua <mua@github.com>\r
 Subject: README\r
-To: Ruslan <dogaruslan@gmail.com>\r
-CC: Ruslan <ruslan.doga@ya.ru>\r
+To: Mr Receiver <receiver1@mailhog.example>\r
+CC: Ms Receiver <receiver2@mailhog.example>\r
 \r
 like and subscribe\r
 .\r
 """
 
-host = fn recipient ->
-  [_user, host] = String.split(recipient, "@")
-  host
-end
-
-recipients
-|> Enum.group_by(host)
-|> Enum.map(fn {host, recipients} ->
-  {host, Mua.easy_send(host, from, recipients, message)}
-end)
+{:ok, _receipt} =
+  Mua.easy_send(
+    _host = "localhost",
+    _mail_from = "mua@github.com",
+    _rcpt_to = ["receiver1@mailhog.example", "receiver2@mailhog.example"],
+    message,
+    port: 1025,
+    auth: [username: "username", password: "password"] 
+  )
 ```
 
 Low-level API:
 
 ```elixir
-[host | _rest] = Mua.mxlookup("gmail.com")
-{:ok, socket, _banner} = Mua.connect(:tcp, host, _port = 25)
+{:ok, socket, _banner} = Mua.connect(:tcp, "localhost", _port = 1025)
+{:ok, extensions} = Mua.ehlo(socket, _sending_domain = "github.com")
 
-our_hostname =
-  case Mua.guess_fqdn() do
-    {:ok, guessed} -> guessed
-    {:error, _posix} -> "copycat.fun" # same as in MAIL FROM
+{:ok, socket} = 
+  if "STARTTLS" in extensions do
+    Mua.starttls(socket, "localhost")
+  else
+    {:ok, _stay_plain_text = socket}
   end
 
-{:ok, extensions} = Mua.ehlo(socket, our_hostname)
+:plain = Mua.pick_auth_method(extensions)
+:ok = Mua.auth(socket, :plain, username: "username", password: "password")
 
-true = "STARTTLS" in extensions
-{:ok, socket} = Mua.starttls(socket, host)
+:ok = Mua.mail_from(socket, "mua@github.com")
+:ok = Mua.rcpt_to(socket, "receiver@mailhog.example")
 
-:ok = Mua.mail_from(socket, "hey@copycat.fun")
-:ok = Mua.rcpt_to(socket, "dogaruslan@gmail.com")
-
-{:ok, _receipt} =
-  Mua.data(socket, """
-  Date: Sat, 24 Jun 2023 13:43:57 +0000\r
-  From: Ruslan <hey@copycat.fun>\r
+message =
+  """
+  Date: Mon, 25 Dec 2023 06:52:15 +0000\r
+  From: Mua <mua@github.com>\r
   Subject: How was your day?\r
-  To: Ruslan <dogaruslan@gmail.com>\r
+  To: Mr Receiver <receiver@mailhog.example>\r
   \r
   Mine was fine.\r
   .\r
-  """)
+  """
 
-:ok = Mua.quit(socket)
+{:ok, _receipt} = Mua.data(socket, message)
 :ok = Mua.close(socket)
 ```
