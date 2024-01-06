@@ -12,11 +12,13 @@ defmodule Mua do
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
   @type transport_opts :: [:gen_tcp.connect_option() | :ssl.tls_client_option()]
   @type error :: {:error, Mua.SMTPError.t() | Mua.TransportError.t()}
+  @type auth_method :: :login | :plain
+  @type auth_credentials :: [username: String.t(), password: String.t()]
   @type option ::
           {:timeout, timeout}
           | {:protocol, proto}
+          | {:auth, auth_credentials}
           | {:port, :inet.port_number()}
-          | {:auth, [username: String.t(), passowrd: String.t()]}
           | {:transport_opts, transport_opts}
 
   @default_timeout :timer.seconds(30)
@@ -302,8 +304,6 @@ defmodule Mua do
     end
   end
 
-  @type auth_method :: :login | :plain
-
   @doc """
   Utility function to pick a supported auth method from a list of extensions.
 
@@ -336,7 +336,7 @@ defmodule Mua do
       :ok = auth(socket, :plain, username: username, password: password)
 
   """
-  @spec auth(socket, auth_method, keyword, timeout) :: :ok | error
+  @spec auth(socket, auth_method, auth_credentials, timeout) :: :ok | error
   def auth(socket, kind, opts \\ [], timeout \\ @default_timeout)
 
   def auth(socket, :login, opts, timeout) do
