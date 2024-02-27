@@ -5,7 +5,7 @@
 
 Minimal SMTP client (aka Mail user agent).
 
-Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.](https://github.com/ruslandoga/swoosh_mua)
+Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.](https://hexdocs.pm/swoosh/Swoosh.Adapters.Mua.html)
 
 ### Features
 
