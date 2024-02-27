@@ -100,7 +100,15 @@ defmodule MuaTest do
     assert String.ends_with?(inspect(match_fun), ":public_key.pkix_verify_hostname_match_fun/1>")
     assert String.ends_with?(inspect(partial_chain), "Mua.SSL.add_partial_chain_fun/1>")
     assert String.ends_with?(cacertfile, "/lib/castore/priv/cacerts.pem")
-    assert length(ciphers) == 63
+
+    expected_ciphers_count =
+      if System.otp_release() == "23" do
+        66
+      else
+        63
+      end
+
+    assert length(ciphers) == expected_ciphers_count
   end
 
   test "ssl opts when host is ip addr" do
