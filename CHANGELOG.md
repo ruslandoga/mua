@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.1.6 (2024-02-27)
+
+- support Elixir v1.13 for Swoosh integration
+
 ## v0.1.5 (2023-12-26)
 
 - cleanup API and update docs

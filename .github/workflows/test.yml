@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     env:
       MIX_ENV: test
@@ -27,8 +27,20 @@ jobs:
 
     strategy:
       matrix:
-        elixir: ["1.14", "1.15", "1.16"]
-        otp: ["25", "26"]
+        elixir: ["1.15", "1.14", "1.13"]
+        otp: ["25", "24", "23"]
+        exclude:
+          - elixir: "1.15"
+            otp: "23"
+        include:
+          - elixir: "1.14"
+            otp: "26"
+          - elixir: "1.15"
+            otp: "26"
+          - elixir: "1.16"
+            otp: "25"
+          - elixir: "1.16"
+            otp: "26"
 
     steps:
       - uses: actions/checkout@v4

@@ -253,13 +253,27 @@ defmodule Mua do
   end
 
   @doc false
-  def trim_extension(<<_::4-bytes, line::bytes>>) do
-    size = byte_size(line)
+  if Version.compare(System.version(), "1.14.0") in [:eq, :gt] do
+    def trim_extension(<<_::4-bytes, line::bytes>>) do
+      size = byte_size(line)
 
-    case line do
-      <<extension::size(size - 2)-bytes, "\r\n">> -> extension
-      <<extension::size(size - 1)-bytes, ?\n>> -> extension
-      <<extension::size(size - 1)-bytes, ?\r>> -> extension
+      case line do
+        <<extension::size(size - 2)-bytes, "\r\n">> -> extension
+        <<extension::size(size - 1)-bytes, ?\n>> -> extension
+        <<extension::size(size - 1)-bytes, ?\r>> -> extension
+      end
+    end
+  else
+    def trim_extension(<<_::4-bytes, line::bytes>>) do
+      size = byte_size(line)
+      size_2 = size - 2
+      size_1 = size - 1
+
+      case line do
+        <<extension::size(size_2)-bytes, "\r\n">> -> extension
+        <<extension::size(size_1)-bytes, ?\n>> -> extension
+        <<extension::size(size_1)-bytes, ?\r>> -> extension
+      end
     end
   end
 

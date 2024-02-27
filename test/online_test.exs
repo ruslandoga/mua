@@ -60,11 +60,13 @@ defmodule Mua.OnlineTest do
       on_exit(fn -> Mua.close(s2) end)
     end
 
-    test "ssl with os cacerts" do
-      assert :ok = :public_key.cacerts_load()
-      assert [_ | _] = cacerts = :public_key.cacerts_get()
-      assert {:ok, socket, _banner} = Mua.connect(:ssl, "smtp.gmail.com", 465, cacerts: cacerts)
-      Mua.close(socket)
+    if System.otp_release() >= "25" do
+      test "ssl with os cacerts" do
+        assert :ok = :public_key.cacerts_load()
+        assert [_ | _] = cacerts = :public_key.cacerts_get()
+        assert {:ok, socket, _banner} = Mua.connect(:ssl, "smtp.gmail.com", 465, cacerts: cacerts)
+        Mua.close(socket)
+      end
     end
   end
 
