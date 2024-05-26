@@ -26,21 +26,21 @@ jobs:
             --health-retries 5
 
     strategy:
+      # https://hexdocs.pm/elixir/compatibility-and-deprecations.html#between-elixir-and-erlang-otp
       matrix:
-        elixir: ["1.15", "1.14", "1.13"]
-        otp: ["25", "24", "23"]
-        exclude:
-          - elixir: "1.15"
-            otp: "23"
+        elixir: [1.16, 1.15, 1.14, 1.13]
+        otp: [26, 25, 24, 23]
         include:
-          - elixir: "1.14"
-            otp: "26"
-          - elixir: "1.15"
-            otp: "26"
-          - elixir: "1.16"
-            otp: "25"
-          - elixir: "1.16"
-            otp: "26"
+          # TODO
+          - elixir: v1.17.0-rc.0
+            otp: 27
+        exclude:
+          - elixir: 1.15
+            otp: 23
+          - elixir: 1.16
+            otp: 23
+          - elixir: 1.13
+            otp: 26
 
     steps:
       - uses: actions/checkout@v4
@@ -65,11 +65,12 @@ jobs:
       - run: mix test
 
   format:
-    runs-on: ubuntu-latest 
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4 
+      - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.16"
-          otp-version: "26"
+          # TODO
+          elixir-version: v1.17.0-rc.0
+          otp-version: 27
       - run: mix format --check-formatted
