@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 (2024-05-29)
 
 - split transport opts by protocol (tcp/ssl) https://github.com/ruslandoga/mua/pull/44
 
