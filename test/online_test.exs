@@ -68,6 +68,22 @@ defmodule Mua.OnlineTest do
         Mua.close(socket)
       end
     end
+
+    # https://github.com/plausible/analytics/discussions/4149
+    test "email-smtp.eu-north-1.amazonaws.com" do
+      {:ok, socket, _banner} =
+        Mua.connect(:ssl, "email-smtp.eu-north-1.amazonaws.com", 465, middlebox_comp_mode: false)
+
+      Mua.close(socket)
+    end
+
+    # https://github.com/plausible/analytics/discussions/4084#discussioncomment-9363412
+    test "eagle.mxlogin.com" do
+      {:ok, socket, _banner} =
+        Mua.connect(:ssl, "eagle.mxlogin.com", 465, middlebox_comp_mode: false)
+
+      Mua.close(socket)
+    end
   end
 
   describe "ehlo/helo" do
@@ -101,6 +117,20 @@ defmodule Mua.OnlineTest do
     test "from tcp/25", %{socket: socket} do
       assert {:ok, socket} = Mua.starttls(socket, "smtp.gmail.com")
       assert {:ok, _cert} = :ssl.peercert(socket)
+    end
+
+    # https://github.com/plausible/analytics/discussions/4149
+    test "email-smtp.eu-north-1.amazonaws.com" do
+      address = "email-smtp.eu-north-1.amazonaws.com"
+
+      {:ok, socket, _banner} = Mua.connect(:tcp, address, 587)
+      on_exit(fn -> Mua.close(socket) end)
+
+      assert {:ok, extensions} = Mua.ehlo(socket, _own_hostname = "localhost")
+      assert "STARTTLS" in extensions
+
+      assert {:ok, socket} = Mua.starttls(socket, address, middlebox_comp_mode: false)
+      on_exit(fn -> Mua.close(socket) end)
     end
   end
 
@@ -183,6 +213,42 @@ defmodule Mua.OnlineTest do
 
       assert Exception.message(error) ==
                "501 Username used for auth is not valid email address\r\n"
+    end
+
+    # https://github.com/plausible/analytics/discussions/4149
+    test "email-smtp.eu-north-1.amazonaws.com" do
+      # TCP -> STARTTLS -> TLS
+      assert {:error, %Mua.SMTPError{code: 530} = error} =
+               Mua.easy_send(
+                 "email-smtp.eu-north-1.amazonaws.com",
+                 "mua@github.com",
+                 ["support@amazon.com"],
+                 "this is an invalid test message from https://github.com/ruslandoga/mua",
+                 port: 587,
+                 ssl: [middlebox_comp_mode: false]
+               )
+
+      assert Exception.message(error) in [
+               "501 Username used for auth is not valid email address\r\n",
+               "530 Authentication required\r\n"
+             ]
+
+      # TLS
+      assert {:error, %Mua.SMTPError{code: 530} = error} =
+               Mua.easy_send(
+                 "email-smtp.eu-north-1.amazonaws.com",
+                 "mua@github.com",
+                 ["support@amazon.com"],
+                 "this is an invalid test message from https://github.com/ruslandoga/mua",
+                 port: 465,
+                 protocol: :ssl,
+                 ssl: [middlebox_comp_mode: false]
+               )
+
+      assert Exception.message(error) in [
+               "501 Username used for auth is not valid email address\r\n",
+               "530 Authentication required\r\n"
+             ]
     end
   end
 end

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- split transport opts by protocol (tcp/ssl) https://github.com/ruslandoga/mua/pull/44
+
 ## v0.1.6 (2024-02-27)
 
 - support Elixir v1.13 for Swoosh integration
