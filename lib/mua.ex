@@ -301,7 +301,7 @@ defmodule Mua do
       {:ok, sslsocket} = starttls(socket, host, versions: [:"tlsv1.3"], middlebox_comp_mode: false)
 
   """
-  @spec starttls(:gen_tcp.socket(), host, [:ssl.tls_client_option()], timeout) ::
+  @spec starttls(:ssl.socket(), host, [:ssl.tls_client_option()], timeout) ::
           {:ok, :ssl.sslsocket()} | error
   def starttls(socket, address, opts \\ [], timeout \\ @default_timeout) when is_port(socket) do
     with {:ok, response} <- request(socket, "STARTTLS\r\n", timeout) do
