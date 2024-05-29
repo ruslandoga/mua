@@ -7,19 +7,18 @@ defmodule Mua do
 
   @dialyzer :no_improper_lists
 
-  @type proto :: :tcp | :ssl
   @type host :: :inet.socket_address() | :inet.hostname() | String.t()
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
-  @type transport_opts :: [:gen_tcp.connect_option() | :ssl.tls_client_option()]
   @type error :: {:error, Mua.SMTPError.t() | Mua.TransportError.t()}
   @type auth_method :: :login | :plain
   @type auth_credentials :: [username: String.t(), password: String.t()]
   @type option ::
           {:timeout, timeout}
-          | {:protocol, proto}
+          | {:protocol, :tcp | :ssl}
           | {:auth, auth_credentials}
           | {:port, :inet.port_number()}
-          | {:transport_opts, transport_opts}
+          | {:tcp, [:gen_tcp.connect_option()]}
+          | {:ssl, [:ssl.tls_client_option()]}
 
   @default_timeout :timer.seconds(30)
 
@@ -110,13 +109,14 @@ defmodule Mua do
     port = opts[:port] || 25
     proto = opts[:protocol] || :tcp
     timeout = opts[:timeout] || @default_timeout
-    sock_opts = opts[:transport_opts] || []
+    sock_opts = opts[proto] || []
+    ssl_opts = opts[:ssl] || []
     auth_creds = opts[:auth]
 
     with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
       try do
         with {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
-             {:ok, socket} <- maybe_starttls(socket, extensions, host, sock_opts, timeout),
+             {:ok, socket} <- maybe_starttls(socket, extensions, host, ssl_opts, timeout),
              {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
              :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
              :ok <- mail_from(socket, sender, timeout),
@@ -144,7 +144,7 @@ defmodule Mua do
          do: {:ok, []}
   end
 
-  @spec maybe_starttls(socket, [String.t()], String.t(), transport_opts(), timeout) ::
+  @spec maybe_starttls(socket, [String.t()], String.t(), [:ssl.tls_client_option()], timeout) ::
           {:ok, socket} | error
   defp maybe_starttls(socket, extensions, host, opts, timeout) do
     if is_port(socket) and "STARTTLS" in extensions do
@@ -169,8 +169,10 @@ defmodule Mua do
       {:ok, socket, _banner} = connect(:ssl, host, _port = 465, versions: [:"tlsv1.3"])
 
   """
-  @spec connect(proto, host, :inet.port_number(), transport_opts(), timeout) ::
-          {:ok, socket, banner :: String.t()} | error
+  @spec connect(:tcp, host, :inet.port_number(), [:gen_tcp.connect_option()], timeout) ::
+          {:ok, :gen_tcp.socket(), banner :: String.t()} | error
+  @spec connect(:ssl, host, :inet.port_number(), [:ssl.tls_client_option()], timeout) ::
+          {:ok, :ssl.sslsocket(), banner :: String.t()} | error
   def connect(protocol, address, port, opts \\ [], timeout \\ @default_timeout) do
     inet6? = Keyword.get(opts, :inet6, false)
     opts = Keyword.drop(opts, [:timeout, :inet6, :mode, :active, :packet])
@@ -296,10 +298,10 @@ defmodule Mua do
   @doc """
   Sends `STARTTLS` extension command and starts TLS session negotiation.
 
-      {:ok, sslsocket} = starttls(socket, host, versions: [:"tlsv1.3"])
+      {:ok, sslsocket} = starttls(socket, host, versions: [:"tlsv1.3"], middlebox_comp_mode: false)
 
   """
-  @spec starttls(:gen_tcp.socket(), host, transport_opts(), timeout) ::
+  @spec starttls(:gen_tcp.socket(), host, [:ssl.tls_client_option()], timeout) ::
           {:ok, :ssl.sslsocket()} | error
   def starttls(socket, address, opts \\ [], timeout \\ @default_timeout) when is_port(socket) do
     with {:ok, response} <- request(socket, "STARTTLS\r\n", timeout) do

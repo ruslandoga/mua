@@ -527,7 +527,7 @@ defmodule Mua.SSL do
       raise """
       default CA trust store not available; please add `:castore` to your project's \
       dependencies or specify the trust store using the :cacertfile/:cacerts option \
-      within :transport_options. From OTP 25, you can also use:
+      within :ssl options list. From OTP 25, you can also use:
 
         * :public_key.cacerts_get/0 to get certificates that you loaded from files or
         * from the OS with :public_key.cacerts_load/0,1
