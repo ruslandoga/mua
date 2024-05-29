@@ -19,7 +19,7 @@ Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.
 ```elixir
 defp deps do
   [
-    {:mua, "~> 0.1.0"}
+    {:mua, "~> 0.2.0"}
   ]
 end
 ```
@@ -54,7 +54,7 @@ like and subscribe\r
     _rcpt_to = ["receiver1@mailhog.example", "receiver2@mailhog.example"],
     message,
     port: 1025,
-    auth: [username: "username", password: "password"] 
+    auth: [username: "username", password: "password"]
   )
 ```
 
@@ -64,7 +64,7 @@ Low-level API:
 {:ok, socket, _banner} = Mua.connect(:tcp, "localhost", _port = 1025)
 {:ok, extensions} = Mua.ehlo(socket, _sending_domain = "github.com")
 
-{:ok, socket} = 
+{:ok, socket} =
   if "STARTTLS" in extensions do
     Mua.starttls(socket, "localhost")
   else
