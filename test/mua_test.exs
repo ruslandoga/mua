@@ -83,32 +83,74 @@ defmodule MuaTest do
     assert Exception.message(Mua.SMTPError.exception(code: 123, lines: ["a\n", "b"])) == "a\nb"
   end
 
-  test "default ssl opts" do
-    assert [
-             {:ciphers, ciphers},
-             {:customize_hostname_check, [match_fun: match_fun]},
-             {:partial_chain, partial_chain},
-             {:cacertfile, cacertfile},
-             {:server_name_indication, ~c"smtp.gmail.com"},
-             {:versions, [:"tlsv1.3", :"tlsv1.2"]},
-             {:verify, :verify_peer},
-             {:depth, 4},
-             {:secure_renegotiate, true},
-             {:reuse_sessions, true}
-           ] = Mua.SSL.opts("smtp.gmail.com")
+  if System.otp_release() >= "25" do
+    test "default ssl opts post v25" do
+      assert [
+               {:ciphers, ciphers},
+               {:customize_hostname_check, [match_fun: match_fun]},
+               {:partial_chain, partial_chain},
+               {:cacerts, cacerts},
+               {:server_name_indication, ~c"smtp.gmail.com"},
+               {:versions, [:"tlsv1.3", :"tlsv1.2"]},
+               {:verify, :verify_peer},
+               {:depth, 4},
+               {:secure_renegotiate, true},
+               {:reuse_sessions, true}
+             ] = Mua.SSL.opts("smtp.gmail.com")
 
-    assert String.ends_with?(inspect(match_fun), ":public_key.pkix_verify_hostname_match_fun/1>")
-    assert String.ends_with?(inspect(partial_chain), "Mua.SSL.add_partial_chain_fun/1>")
-    assert String.ends_with?(cacertfile, "/lib/castore/priv/cacerts.pem")
+      assert String.ends_with?(
+               inspect(match_fun),
+               ":public_key.pkix_verify_hostname_match_fun/1>"
+             )
 
-    expected_ciphers_count =
-      if System.otp_release() == "23" do
-        66
-      else
-        63
-      end
+      assert String.ends_with?(inspect(partial_chain), "Mua.SSL.add_partial_chain_fun/1>")
 
-    assert length(ciphers) == expected_ciphers_count
+      refute Enum.empty?(cacerts)
+      assert cacerts == :public_key.cacerts_get()
+
+      expected_ciphers_count =
+        if System.otp_release() == "23" do
+          66
+        else
+          63
+        end
+
+      assert length(ciphers) == expected_ciphers_count
+    end
+  end
+
+  if System.otp_release() < "25" do
+    test "default ssl opts pre v25" do
+      assert [
+               {:ciphers, ciphers},
+               {:customize_hostname_check, [match_fun: match_fun]},
+               {:partial_chain, partial_chain},
+               {:cacertfile, cacertfile},
+               {:server_name_indication, ~c"smtp.gmail.com"},
+               {:versions, [:"tlsv1.3", :"tlsv1.2"]},
+               {:verify, :verify_peer},
+               {:depth, 4},
+               {:secure_renegotiate, true},
+               {:reuse_sessions, true}
+             ] = Mua.SSL.opts("smtp.gmail.com")
+
+      assert String.ends_with?(
+               inspect(match_fun),
+               ":public_key.pkix_verify_hostname_match_fun/1>"
+             )
+
+      assert String.ends_with?(inspect(partial_chain), "Mua.SSL.add_partial_chain_fun/1>")
+      assert String.ends_with?(cacertfile, "/lib/castore/priv/cacerts.pem")
+
+      expected_ciphers_count =
+        if System.otp_release() == "23" do
+          66
+        else
+          63
+        end
+
+      assert length(ciphers) == expected_ciphers_count
+    end
   end
 
   test "ssl opts when host is ip addr" do
