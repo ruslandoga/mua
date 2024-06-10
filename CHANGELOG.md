@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- default to `:public_key.cacerts_get/0` instead of `CAStore`
+
 ## v0.2.1 (2024-05-30)
 
 - improve docs
