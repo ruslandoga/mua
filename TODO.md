@@ -1,3 +1,3 @@
-- tests
+- tests (mailpit starttls, etc.)
 - configure if tls is required or not
 - telemetry (bounces, etc.)

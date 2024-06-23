@@ -3,8 +3,6 @@ defmodule Mua.OnlineTest do
 
   @moduletag :online
 
-  # uses public network to test mx lookups and connections
-
   describe "mxlookup" do
     test "gmail.com" do
       assert Mua.mxlookup("gmail.com") == [

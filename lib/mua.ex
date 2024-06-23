@@ -25,6 +25,7 @@ defmodule Mua do
   require Record
   Record.defrecordp(:hostent, Record.extract(:hostent, from_lib: "kernel/include/inet.hrl"))
 
+  # TODO remove
   @doc """
   Utility function to guess the local hostname to use for HELO/EHLO.
 
