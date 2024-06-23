@@ -1,4 +1,3 @@
 - tests (mailpit starttls, etc.)
-- remove guess_sender_hostname/0
 - configure if tls is required or not
 - telemetry (bounces, etc.)
