@@ -22,22 +22,6 @@ defmodule Mua do
 
   @default_timeout :timer.seconds(30)
 
-  require Record
-  Record.defrecordp(:hostent, Record.extract(:hostent, from_lib: "kernel/include/inet.hrl"))
-
-  @doc """
-  Utility function to guess the local hostname to use for HELO/EHLO.
-
-      {:ok, "mac3"} = guess_sender_hostname()
-
-  """
-  @spec guess_sender_hostname :: {:ok, String.t()} | {:error, :inet.posix()}
-  def guess_sender_hostname do
-    with {:ok, hostname} <- :inet.gethostname(),
-         {:ok, hostent(h_name: hostname)} <- :inet.gethostbyname(hostname),
-         do: {:ok, List.to_string(hostname)}
-  end
-
   @doc """
   Utility function to lookup MX servers for a domain.
 
