@@ -29,7 +29,7 @@ end
 This demo will use [Mailpit:](https://github.com/axllent/mailpit)
 
 ```console
-$ docker run -d --rm -p 1025:1025 -p 8025:8025 --name mailpit axllent/mailpit
+$ docker run -d --rm -p 1025:1025 -p 8025:8025 -e "MP_SMTP_AUTH_ACCEPT_ANY=1" -e "MP_SMTP_AUTH_ALLOW_INSECURE=1" --name mailpit axllent/mailpit
 $ open http://localhost:8025
 ```
 
@@ -64,11 +64,15 @@ Low-level API:
 {:ok, socket, _banner} = Mua.connect(:tcp, "localhost", _port = 1025)
 {:ok, extensions} = Mua.ehlo(socket, _sending_domain = "github.com")
 
-true = "STARTTLS" in extensions
-{:ok, socket} = Mua.starttls(socket, "localhost")
+{:ok, socket} =
+  if "STARTTLS" in extensions do
+    Mua.starttls(socket, "localhost")
+  else
+    {:ok, socket}
+  end
 
-:plain = Mua.pick_auth_method(extensions)
-:ok = Mua.auth(socket, :plain, username: "username", password: "password")
+:login = Mua.pick_auth_method(extensions)
+:ok = Mua.auth(socket, :login, username: "username", password: "password")
 
 :ok = Mua.mail_from(socket, "mua@github.com")
 :ok = Mua.rcpt_to(socket, "receiver@mailpit.example")
