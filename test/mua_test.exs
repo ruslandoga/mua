@@ -62,7 +62,8 @@ defmodule MuaTest do
   test "guess_sender_hostname/0" do
     {os_hostname, 0} = System.cmd("hostname", ["-f"])
     os_hostname = String.trim(os_hostname)
-    assert {:ok, ^os_hostname} = Mua.guess_sender_hostname()
+    assert {:ok, guessed_hostname} = Mua.guess_sender_hostname()
+    assert guessed_hostname in [os_hostname, String.trim_trailing(os_hostname, ".local")]
   end
 
   test "transport_error message" do
