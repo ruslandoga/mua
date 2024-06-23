@@ -13,7 +13,7 @@ jobs:
       MIX_ENV: test
 
     services:
-      mailhog:
+      mailpit:
         image: axllent/mailpit:latest
         ports:
           - 1025:1025
