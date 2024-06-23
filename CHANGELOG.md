@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- remove unused `guess_sender_hostname/0` https://github.com/ruslandoga/mua/pull/48
+
 ## v0.2.2 (2024-06-10)
 
 - default to `:public_key.cacerts_get/0` instead of `CAStore`
