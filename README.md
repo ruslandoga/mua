@@ -1,7 +1,7 @@
 # Mua
 
-[![Hex Package](https://img.shields.io/hexpm/v/mua.svg)](https://hex.pm/packages/mua)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/mua)
+[![Documentation badge](https://img.shields.io/badge/Documentation-ff69b4)](https://hexdocs.pm/mua)
+[![Hex.pm badge](https://img.shields.io/badge/Package%20on%20hex.pm-informational)](https://hex.pm/packages/mua)
 
 Minimal SMTP client (aka Mail user agent).
 
