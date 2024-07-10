@@ -93,6 +93,27 @@ defmodule Mua.MailpitTest do
   end
 
   defp mailpit_search(params) do
-    Req.get!("http://localhost:8025/api/v1/search?" <> URI.encode_query(params)).body
+    url = String.to_charlist("http://localhost:8025/api/v1/search?" <> URI.encode_query(params))
+
+    http_opts = [
+      timeout: :timer.seconds(15),
+      connect_timeout: :timer.seconds(15)
+    ]
+
+    opts = [
+      body_format: :binary
+    ]
+
+    case :httpc.request(:get, {url, _headers = []}, http_opts, opts) do
+      {:ok, {{_, status, _}, headers, body} = response} ->
+        unless status == 200 do
+          raise "failed GET #{url} with #{inspect(response)}"
+        end
+
+        Jason.decode!(body)
+
+      {:error, reason} ->
+        raise "failed GET #{url} with #{inspect(reason)}"
+    end
   end
 end

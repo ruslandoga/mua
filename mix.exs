@@ -39,9 +39,12 @@ defmodule Mua.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:ssl]
+      extra_applications: [:ssl | extra_applications(Mix.env())]
     ]
   end
+
+  defp extra_applications(env) when env in [:dev, :test], do: [:inets]
+  defp extra_applications(_env), do: []
 
   defp package do
     [
@@ -59,7 +62,7 @@ defmodule Mua.MixProject do
       {:castore, "~> 0.1.0 or ~> 1.0", optional: true},
       {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.29", only: :dev},
-      {:req, "~> 0.5.0", only: :test}
+      {:jason, "~> 1.4", only: :test}
     ]
   end
 end
