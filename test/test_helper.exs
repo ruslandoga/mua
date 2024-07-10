@@ -12,11 +12,11 @@ exclude =
   end
 
 exclude =
-  case Req.request("http://localhost:8025/api/v1/info", max_retries: 0) do
-    {:ok, %Req.Response{status: 200, body: %{}}} ->
+  case :httpc.request(:get, {~c"http://localhost:8025/api/v1/info", []}, [], []) do
+    {:ok, {{_version, _status = 200, _reason}, _headers, _body}} ->
       exclude
 
-    {:error, %Req.TransportError{reason: :econnrefused}} ->
+    {:error, {:failed_connect, [_to_address, {:inet, [:inet], :econnrefused}]}} ->
       shell.error("""
       To enable Mailpit tests, start the local container with the following command:
 
