@@ -14,6 +14,7 @@ defmodule Mua do
   @type auth_credentials :: [username: String.t(), password: String.t()]
   @type option ::
           {:timeout, timeout}
+          | {:mx, boolean}
           | {:protocol, :tcp | :ssl}
           | {:auth, auth_credentials}
           | {:port, :inet.port_number()}
@@ -60,7 +61,14 @@ defmodule Mua do
           {:ok, receipt :: String.t()} | error
   def easy_send(host, sender, recipients, message, opts \\ []) do
     [_, sender_hostname] = String.split(sender, "@")
-    hosts = with [] <- mxlookup(host), do: [host]
+
+    hosts =
+      if opts[:mx] do
+        with [] <- mxlookup(host), do: [host]
+      else
+        [host]
+      end
+
     easy_send_any(hosts, sender_hostname, sender, recipients, message, opts)
   end
 
