@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.3 (2024-07-12)
 
 - remove unused `guess_sender_hostname/0` https://github.com/ruslandoga/mua/pull/48
 - allow skipping MX lookup (useful when using relays) https://github.com/ruslandoga/mua/pull/55
