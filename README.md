@@ -1,5 +1,6 @@
 # Mua
 
+[![CI](https://github.com/ruslandoga/mua/actions/workflows/test.yml/badge.svg)](https://github.com/ruslandoga/mua/actions/workflows/test.yml)
 [![Documentation badge](https://img.shields.io/badge/Documentation-ff69b4)](https://hexdocs.pm/mua)
 [![Hex.pm badge](https://img.shields.io/badge/Package%20on%20hex.pm-informational)](https://hex.pm/packages/mua)
 
