@@ -10,7 +10,7 @@ Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.
 ### Features
 
 - Direct messaging (no relays)
-- Inderect messaging (relays)
+- Indirect messaging (relays)
 - Minimal API
 - Processless
 
