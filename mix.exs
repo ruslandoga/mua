@@ -12,10 +12,6 @@ defmodule Mua.MixProject do
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
-      # dialyxir
-      dialyzer: [
-        plt_add_apps: [:castore]
-      ],
       # hex
       package: package(),
       description: "Minimal SMTP client",
@@ -46,6 +42,12 @@ defmodule Mua.MixProject do
   defp extra_applications(env) when env in [:dev, :test], do: [:inets]
   defp extra_applications(_env), do: []
 
+  def cli do
+    [
+      preferred_envs: [docs: :docs, "hex.publish": :docs, dialyzer: :static]
+    ]
+  end
+
   defp package do
     [
       licenses: ["MIT"],
@@ -60,8 +62,8 @@ defmodule Mua.MixProject do
   defp deps do
     [
       {:castore, "~> 0.1.0 or ~> 1.0", optional: true},
-      {:dialyxir, "~> 1.3", only: :dev, runtime: false},
-      {:ex_doc, "~> 0.29", only: :dev},
+      {:dialyxir, "~> 1.3", only: :static, runtime: false},
+      {:ex_doc, "~> 0.29", only: :docs},
       {:decimal, "~> 2.1", only: :test},
       {:jason, "~> 1.4", only: :test}
     ]
