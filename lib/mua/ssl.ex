@@ -524,17 +524,18 @@ defmodule Mua.SSL do
   end
 
   @doc false
-  def blocked_cipher?(%{cipher: cipher, key_exchange: kex, prf: prf}) do
-    blocked_cipher?({kex, cipher, prf})
+  def blocked_cipher?(%{key_exchange: kex, cipher: cipher, prf: prf}) do
+    blocked_cipher?(kex, cipher, prf)
   end
 
-  def blocked_cipher?({kex, cipher, _mac, prf}), do: blocked_cipher?({kex, cipher, prf})
+  def blocked_cipher?({kex, cipher, _mac, prf}), do: blocked_cipher?(kex, cipher, prf)
+  def blocked_cipher?({kex, cipher, prf}), do: blocked_cipher?(kex, cipher, prf)
 
-  for suite <- @blocked_ciphers do
-    def blocked_cipher?(unquote(suite)), do: true
+  for {kex, cipher, prf} <- @blocked_ciphers do
+    defp blocked_cipher?(unquote(kex), unquote(cipher), unquote(prf)), do: true
   end
 
-  def blocked_cipher?({_kex, _cipher, _prf}), do: false
+  defp blocked_cipher?(_kex, _cipher, _prf), do: false
 
   defp raise_on_missing_castore! do
     Code.ensure_loaded?(CAStore) ||
