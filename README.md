@@ -70,8 +70,8 @@ Low-level API:
     {:ok, socket}
   end
 
-:login = Mua.pick_auth_method(extensions)
-:ok = Mua.auth(socket, :login, username: "username", password: "password")
+:plain = Mua.pick_auth_method(extensions)
+:ok = Mua.auth(socket, :plain, username: "username", password: "password")
 
 :ok = Mua.mail_from(socket, "mua@github.com")
 :ok = Mua.rcpt_to(socket, "receiver@mailpit.example")
