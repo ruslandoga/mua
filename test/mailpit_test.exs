@@ -15,8 +15,7 @@ defmodule Mua.MailpitTest do
       Subject: Hey!\r
       To: Mailpit <mailpit@localhost>\r
       \r
-      How was your day? Long time no see!\r
-      .\r
+      How was your day? Long time no see!
       """
 
       {:ok, message: %{id: message_id, body: message_body}}
@@ -104,8 +103,8 @@ defmodule Mua.MailpitTest do
       body_format: :binary
     ]
 
-    case :httpc.request(:get, {url, _headers = []}, http_opts, opts) do
-      {:ok, {{_, status, _}, headers, body} = response} ->
+    case :httpc.request(:get, {url, _req_headers = []}, http_opts, opts) do
+      {:ok, {{_, status, _}, _resp_headers, body} = response} ->
         unless status == 200 do
           raise "failed GET #{url} with #{inspect(response)}"
         end
