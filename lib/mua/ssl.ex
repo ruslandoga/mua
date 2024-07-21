@@ -378,16 +378,24 @@ defmodule Mua.SSL do
     ]
   end
 
-  @doc false
-  def versions do
-    available_versions = :ssl.versions()[:available]
-    versions = Enum.filter(@default_versions, &(&1 in available_versions))
+  ssl_version =
+    Application.spec(:ssl, :vsn)
+    |> List.to_string()
+    |> String.split(".")
+    |> Enum.map(&String.to_integer/1)
 
-    # Remove buggy TLS 1.3 versions
-    if version() < [10, 0] do
+  @doc false
+  if ssl_version < [10, 0] do
+    def versions do
+      available_versions = :ssl.versions()[:available]
+      versions = Enum.filter(@default_versions, &(&1 in available_versions))
+      # Remove buggy TLS 1.3 versions
       versions -- [:"tlsv1.3"]
-    else
-      versions
+    end
+  else
+    def versions do
+      available_versions = :ssl.versions()[:available]
+      Enum.filter(@default_versions, &(&1 in available_versions))
     end
   end
 
@@ -549,14 +557,6 @@ defmodule Mua.SSL do
 
       See: https://www.erlang.org/blog/my-otp-25-highlights/#ca-certificates-can-be-fetched-from-the-os-standard-place
       """
-  end
-
-  @doc false
-  def version do
-    Application.spec(:ssl, :vsn)
-    |> List.to_string()
-    |> String.split(".")
-    |> Enum.map(&String.to_integer/1)
   end
 
   @doc false
