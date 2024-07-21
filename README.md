@@ -43,8 +43,7 @@ Subject: README\r
 To: Mr Receiver <receiver1@mailpit.example>\r
 CC: Ms Receiver <receiver2@mailpit.example>\r
 \r
-like and subscribe\r
-.\r
+like and subscribe
 """
 
 {:ok, _receipt} =
@@ -84,8 +83,7 @@ message =
   Subject: How was your day?\r
   To: Mr Receiver <receiver@mailpit.example>\r
   \r
-  Mine was fine.\r
-  .\r
+  Mine was fine.
   """
 
 {:ok, _receipt} = Mua.data(socket, message)
