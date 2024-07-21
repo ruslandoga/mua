@@ -23,6 +23,11 @@ defmodule Mua.MixProject do
         main: "readme",
         extras: ["README.md", "CHANGELOG.md"],
         skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
+      ],
+      xref: [
+        exclude: [
+          {:public_key, :cacerts_get, 0}
+        ]
       ]
     ]
   end
