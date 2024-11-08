@@ -421,7 +421,7 @@ defmodule Mua do
     message = :binary.replace(message, "\n.", "\n..")
 
     with {:ok, [354 | _lines]} <- request(socket, "DATA\r\n", timeout),
-         {:ok, [250 | lines]} <- request(socket, [message | ".\r\n"], timeout) do
+         {:ok, [250 | lines]} <- request(socket, [message | "\r\n.\r\n"], timeout) do
       {:ok, IO.iodata_to_binary(lines)}
     else
       {:ok, [code | lines]} -> smtp_error(code, lines)
