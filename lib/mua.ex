@@ -432,8 +432,7 @@ defmodule Mua do
   @spec escape_leading_dot(iodata) :: iodata
   defp escape_leading_dot(message) do
     message = IO.iodata_to_binary(message)
-    escaped_parts = escape_leading_dot(message, 0, 0, message, [])
-    :lists.reverse(escaped_parts)
+    escape_leading_dot(message, 0, 0, message, [])
   end
 
   defp escape_leading_dot(<<?\n, ?., rest::bytes>>, from, len, original, acc) do
@@ -445,8 +444,13 @@ defmodule Mua do
     escape_leading_dot(rest, from, len + 1, original, acc)
   end
 
+  defp escape_leading_dot(<<>>, _from, _len, original, []) do
+    original
+  end
+
   defp escape_leading_dot(<<>>, from, len, original, acc) do
-    [binary_part(original, from, len) | acc]
+    escaped_parts = [binary_part(original, from, len) | acc]
+    :lists.reverse(escaped_parts)
   end
 
   @doc """
