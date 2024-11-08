@@ -417,6 +417,9 @@ defmodule Mua do
   """
   @spec data(socket, iodata, timeout) :: {:ok, receipt :: String.t()} | error
   def data(socket, message, timeout \\ @default_timeout) do
+    # TODO implement proper
+    message = escape_leading_dot(message)
+
     with {:ok, [354 | _lines]} <- request(socket, "DATA\r\n", timeout),
          {:ok, [250 | lines]} <- request(socket, [message | "\r\n.\r\n"], timeout) do
       {:ok, IO.iodata_to_binary(lines)}
@@ -424,6 +427,26 @@ defmodule Mua do
       {:ok, [code | lines]} -> smtp_error(code, lines)
       {:error, _reason} = error -> error
     end
+  end
+
+  @spec escape_leading_dot(iodata) :: iodata
+  defp escape_leading_dot(message) do
+    message = IO.iodata_to_binary(message)
+    escaped_parts = escape_leading_dot(message, 0, 0, message, [])
+    :lists.reverse(escaped_parts)
+  end
+
+  defp escape_leading_dot(<<?\n, ?., rest::bytes>>, from, len, original, acc) do
+    acc = ["\n..", binary_part(original, from, len) | acc]
+    escape_leading_dot(rest, from + len + 2, 0, original, acc)
+  end
+
+  defp escape_leading_dot(<<_, rest::bytes>>, from, len, original, acc) do
+    escape_leading_dot(rest, from, len + 1, original, acc)
+  end
+
+  defp escape_leading_dot(<<>>, from, len, original, acc) do
+    [binary_part(original, from, len) | acc]
   end
 
   @doc """
