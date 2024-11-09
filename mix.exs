@@ -65,7 +65,8 @@ defmodule Mua.MixProject do
       {:dialyxir, "~> 1.3", only: :static, runtime: false},
       {:ex_doc, "~> 0.29", only: :docs},
       {:decimal, "~> 2.1", only: :test},
-      {:jason, "~> 1.4", only: :test}
+      {:jason, "~> 1.4", only: :test},
+      {:benchee, "~> 1.3", only: :bench}
     ]
   end
 end

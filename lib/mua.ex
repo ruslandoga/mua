@@ -417,6 +417,9 @@ defmodule Mua do
   """
   @spec data(socket, iodata, timeout) :: {:ok, receipt :: String.t()} | error
   def data(socket, message, timeout \\ @default_timeout) do
+    # TODO implement proper
+    message = do_dot_stuffing(message)
+
     with {:ok, [354 | _lines]} <- request(socket, "DATA\r\n", timeout),
          {:ok, [250 | lines]} <- request(socket, [message | "\r\n.\r\n"], timeout) do
       {:ok, IO.iodata_to_binary(lines)}
@@ -424,6 +427,13 @@ defmodule Mua do
       {:ok, [code | lines]} -> smtp_error(code, lines)
       {:error, _reason} = error -> error
     end
+  end
+
+  @doc false
+  def do_dot_stuffing(message) do
+    message
+    |> IO.iodata_to_binary()
+    |> :binary.replace("\n.", "\n..", [:global])
   end
 
   @doc """

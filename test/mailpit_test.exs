@@ -91,8 +91,58 @@ defmodule Mua.MailpitTest do
     end
   end
 
+  # https://github.com/swoosh/swoosh/issues/968
+  test "period at start of line is escaped" do
+    message_id = "#{System.system_time()}.#{System.unique_integer([:positive])}.mua@localhost"
+
+    assert {:ok, _receipt} =
+             Mua.easy_send(
+               _host = "localhost",
+               _from = "me@localhost",
+               _rcpts = ["you@localhost"],
+               """
+               Message-ID: <#{message_id}>
+               Date: Fri, 30 Sep 2016 12:02:00 +0200
+               From: me@localhost
+               To: you@localhost
+               Subject: Test message
+
+               This is a test message
+               . with a dot
+               in a line
+               .. and now two dots
+               in a line
+               """,
+               port: 1025
+             )
+
+    assert %{"messages" => [%{"ID" => id}]} =
+             mailpit_search(%{"query" => "message-id:#{message_id}"})
+
+    assert %{
+             "Text" => """
+             This is a test message
+             . with a dot
+             in a line
+             .. and now two dots
+             in a line
+             \r
+             """
+           } = mailpit_summary(id)
+  end
+
+  # https://mailpit.axllent.org/docs/api-v1/view.html#get-/api/v1/search
   defp mailpit_search(params) do
-    url = String.to_charlist("http://localhost:8025/api/v1/search?" <> URI.encode_query(params))
+    mailpit_get("/api/v1/search?" <> URI.encode_query(params))
+  end
+
+  # https://mailpit.axllent.org/docs/api-v1/view.html#get-/api/v1/message/-ID-
+  defp mailpit_summary(id) do
+    mailpit_get("/api/v1/message/#{id}")
+  end
+
+  defp mailpit_get(path) do
+    url = String.to_charlist(Path.join("http://localhost:8025", path))
 
     http_opts = [
       timeout: :timer.seconds(15),

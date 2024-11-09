@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- implement dot stuffing https://github.com/ruslandoga/mua/pull/66
+
 ## v0.2.3 (2024-07-12)
 
 - remove unused `guess_sender_hostname/0` https://github.com/ruslandoga/mua/pull/48
