@@ -110,6 +110,8 @@ defmodule Mua.MailpitTest do
                This is a test message
                . with a dot
                in a line
+               .. and now two dots
+               in a line
                """,
                port: 1025
              )
@@ -121,6 +123,8 @@ defmodule Mua.MailpitTest do
              "Text" => """
              This is a test message
              . with a dot
+             in a line
+             .. and now two dots
              in a line
              \r
              """
