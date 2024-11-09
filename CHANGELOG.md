@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.4 (2024-11-09)
 
 - implement dot stuffing https://github.com/ruslandoga/mua/pull/66
 

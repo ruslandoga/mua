@@ -1,7 +1,7 @@
 defmodule Mua.MixProject do
   use Mix.Project
 
-  @version "0.2.3"
+  @version "0.2.4"
   @repo_url "https://github.com/ruslandoga/mua"
 
   def project do
