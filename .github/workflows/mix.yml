@@ -63,7 +63,7 @@ jobs:
 
       - run: mix deps.get --only $MIX_ENV
       - run: mix compile --warnings-as-errors
-      - run: mix test
+      - run: mix test --include mailpit --include online
 
   format:
     runs-on: ubuntu-latest
