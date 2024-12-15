@@ -48,12 +48,25 @@ defmodule Mua do
   @doc """
   Utility function to send a message to a list of recipients on a host.
 
+      # sending via a relay
+      {:ok, _receipt} =
+        easy_send(
+          _host = "icloud.com",
+          _sender = "ruslandoga@icloud.com",
+          _recipients = ["support@gmail.com"],
+          _message = "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n...",
+          auth: [username: "ruslandoga@icloud.com", password: "some-app-password"],
+          port: 587
+        )
+
+      # sending directly (usually requires SPF/DKIM/DMARC on the sender domain)
       {:ok, _receipt} =
         easy_send(
           _host = "gmail.com",
-          _sender = "mua@github.com",
+          _sender = "ruslandoga@domain.com",
           _recipients = ["support@gmail.com"],
-          _message = "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n..."
+          _message = "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n...",
+          port: 25
         )
 
   """
@@ -233,7 +246,7 @@ defmodule Mua do
   Sends `EHLO` command which provides the identification of the sender i.e. the host name,
   and receives the list of extensions the server supports.
 
-      {:ok, _extensions = ["STARTTLS" | _rest]} = ehlo(socket, _our_hostname = "copycat.fun")
+      {:ok, _extensions = ["STARTTLS" | _rest]} = ehlo(socket, _our_hostname = "icloud.com")
 
   """
   @spec ehlo(socket, String.t(), timeout) :: {:ok, [String.t()]} | error
@@ -274,7 +287,7 @@ defmodule Mua do
   @doc """
   Sends `HELO` command which provides the identification of the sender i.e. the host name.
 
-      :ok = helo(socket, _our_hostname = "copycat.fun")
+      :ok = helo(socket, _our_hostname = "icloud.com")
 
   """
   @spec helo(socket, String.t(), timeout) :: :ok | error
@@ -380,7 +393,7 @@ defmodule Mua do
   @doc """
   Sends `MAIL FROM` command that specifies the originator of the mail.
 
-      :ok = mail_from(socket, "hey@copycat.fun")
+      :ok = mail_from(socket, "ruslandoga@icloud.com")
 
   """
   @spec mail_from(socket, String.t(), timeout) :: :ok | error
@@ -439,7 +452,7 @@ defmodule Mua do
   @doc """
   Sends `VRFY` command that confirms or verifies the user name.
 
-      {:ok, true} = vrfy(socket, "dogaruslan@gmail.com")
+      {:ok, true} = vrfy(socket, "ruslandoga@icloud.com")
 
   """
   @spec vrfy(socket, String.t(), timeout) :: {:ok, boolean} | error
