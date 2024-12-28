@@ -52,10 +52,10 @@ defmodule Mua do
       {:ok, _receipt} =
         easy_send(
           _host = "icloud.com",
-          _sender = "ruslandoga@icloud.com",
+          _sender = "ruslandoga+mua@icloud.com",
           _recipients = ["support@gmail.com"],
           _message = "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n...",
-          auth: [username: "ruslandoga@icloud.com", password: "some-app-password"],
+          auth: [username: "ruslandoga+mua@icloud.com", password: "some-app-password"],
           port: 587
         )
 
@@ -63,7 +63,7 @@ defmodule Mua do
       {:ok, _receipt} =
         easy_send(
           _host = "gmail.com",
-          _sender = "ruslandoga@domain.com",
+          _sender = "ruslandoga+mua@domain.com",
           _recipients = ["support@gmail.com"],
           _message = "Date: Sat, 24 Jun 2023 13:43:57 +0000\\r\\n...",
           port: 25
@@ -393,7 +393,7 @@ defmodule Mua do
   @doc """
   Sends `MAIL FROM` command that specifies the originator of the mail.
 
-      :ok = mail_from(socket, "ruslandoga@icloud.com")
+      :ok = mail_from(socket, "ruslandoga+mua@icloud.com")
 
   """
   @spec mail_from(socket, String.t(), timeout) :: :ok | error
@@ -452,7 +452,7 @@ defmodule Mua do
   @doc """
   Sends `VRFY` command that confirms or verifies the user name.
 
-      {:ok, true} = vrfy(socket, "ruslandoga@icloud.com")
+      {:ok, true} = vrfy(socket, "ruslandoga+mua@icloud.com")
 
   """
   @spec vrfy(socket, String.t(), timeout) :: {:ok, boolean} | error
