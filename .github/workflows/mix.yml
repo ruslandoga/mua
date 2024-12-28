@@ -35,6 +35,16 @@ jobs:
         include:
           - elixir: 1.17
             otp: 27
+          - elixir: 1.17
+            otp: 26
+          - elixir: 1.17
+            otp: 25
+          - elixir: 1.18
+            otp: 27
+          - elixir: 1.18
+            otp: 26
+          - elixir: 1.18
+            otp: 25
         exclude:
           - elixir: 1.15
             otp: 23
@@ -46,7 +56,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: erlef/setup-beam@v1
+      - id: beam
+        uses: erlef/setup-beam@v1
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
@@ -56,10 +67,10 @@ jobs:
           path: |
             deps
             _build
-          key: test-otp-${{ matrix.otp }}-elixir-${{ matrix.elixir }}-ref-${{ github.head_ref || github.ref }}-mix-${{ hashFiles('**/mix.lock') }}
+          key: test-${{ steps.beam.outputs.elixir-version }}-${{ github.head_ref || github.ref }}-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
-            test-otp-${{ matrix.otp }}-elixir-${{ matrix.elixir }}-ref-${{ github.head_ref || github.ref }}-mix-
-            test-otp-${{ matrix.otp }}-elixir-${{ matrix.elixir }}-ref-refs/heads/master-mix-
+            test-${{ steps.beam.outputs.elixir-version }}-${{ github.head_ref || github.ref }}-
+            test-${{ steps.beam.outputs.elixir-version }}-refs/heads/master-
 
       - run: mix deps.get --only $MIX_ENV
       - run: mix compile --warnings-as-errors
