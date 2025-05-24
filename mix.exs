@@ -66,7 +66,7 @@ defmodule Mua.MixProject do
       {:ex_doc, "~> 0.29", only: :docs},
       {:decimal, "~> 2.1", only: :test},
       {:jason, "~> 1.4", only: :test},
-      {:mail, "~> 0.4.3", only: :test},
+      {:mail, "~> 0.5.1", only: :test},
       {:benchee, "~> 1.3", only: :bench}
     ]
   end
