@@ -67,6 +67,7 @@ defmodule Mua.MixProject do
       {:decimal, "~> 2.1", only: :test},
       {:jason, "~> 1.4", only: :test},
       {:mail, "~> 0.4.3", only: :test},
+      {:stream_data, "~> 1.0", only: :test},
       {:benchee, "~> 1.3", only: :bench}
     ]
   end

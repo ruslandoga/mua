@@ -1,6 +1,5 @@
 - tests (mailpit starttls, etc.)
 - configure if starttls is required or not
 - telemetry (bounces, duration, etc.)
-- rename easy_send -> deliver?
 - named connection reuse, pool
-- "mimedown", custom quoted printable
+- "mimedown"

@@ -36,18 +36,23 @@ $ open http://localhost:8025
 High-level API:
 
 ```elixir
-message = """
-Date: Mon, 25 Dec 2023 06:52:15 +0000\r
-From: Mua <mua@github.com>\r
-Subject: README\r
-To: Mr Receiver <receiver1@mailpit.example>\r
-CC: Ms Receiver <receiver2@mailpit.example>\r
-\r
-like and subscribe
-"""
+now = DateTime.utc_now()
+
+message = 
+  Mua.render(
+    _headers = [
+      {"Date", Calendar.strftime(now, "%a, %d %b %Y %H:%M:%S %z")},
+      {"Message-ID", Mua.message_id(_host = "github.com", now)},
+      {"From", "Mua <mua@github.com>"},
+      {"Subject", "README"},
+      {"To", "Mr Receiver <receiver1@mailpit.example>"},
+      {"Cc", "Ms Receiver <receiver2@mailpit.example>"}
+    ],
+    _message = "like and subscribe"
+  )
 
 {:ok, _receipt} =
-  Mua.easy_send(
+  Mua.deliver(
     _host = "localhost",
     _mail_from = "mua@github.com",
     _rcpt_to = ["receiver1@mailpit.example", "receiver2@mailpit.example"],
@@ -86,6 +91,6 @@ message =
   Mine was fine.
   """
 
-{:ok, _receipt} = Mua.data(socket, message)
+{:ok, _receipt} = Mua.data(socket, Mua.dot_stuff(message))
 :ok = Mua.close(socket)
 ```

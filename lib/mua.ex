@@ -23,6 +23,14 @@ defmodule Mua do
 
   @default_timeout :timer.seconds(30)
 
+  def render(headers, parts) do
+    Mua.Message.render(headers, parts)
+  end
+
+  def deliver(host, sender, recipients, message, opts \\ []) do
+    easy_send(host, sender, recipients, message, opts)
+  end
+
   @doc """
   Utility function to lookup MX servers for a domain.
 

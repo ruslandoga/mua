@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- add message renderer via `Mua.render/2`
+- add message-id helper `Mua.message_id/2`
+- add `Mua.deliver/5` 
+- deprecate `Mua.easy_send/5` in favour of `Mua.deliver/5`
+- add dot stuffing helper `Mua.dot_stuff/1`
+
 ## v0.2.4 (2024-11-09)
 
 - implement dot stuffing https://github.com/ruslandoga/mua/pull/66
