@@ -121,8 +121,8 @@ defmodule Mua do
     with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
       try do
         with {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
-             {:ok, socket} <- maybe_starttls(socket, extensions, host, ssl_opts, timeout),
-             {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
+             {:ok, socket, extensions} <-
+               maybe_starttls(socket, extensions, host, helo, ssl_opts, timeout),
              :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
              :ok <- mail_from(socket, sender, timeout),
              :ok <- many_rcpt_to(recipients, socket, timeout),
@@ -149,13 +149,23 @@ defmodule Mua do
          do: {:ok, []}
   end
 
-  @spec maybe_starttls(socket, [String.t()], String.t(), [:ssl.tls_client_option()], timeout) ::
+  @spec maybe_starttls(
+          socket,
+          extensions :: [String.t()],
+          host :: String.t(),
+          helo :: String.t(),
+          opts :: [:ssl.tls_client_option()],
+          timeout
+        ) ::
           {:ok, socket} | error
-  defp maybe_starttls(socket, extensions, host, opts, timeout) do
+  defp maybe_starttls(socket, extensions, host, helo, opts, timeout) do
     if is_port(socket) and "STARTTLS" in extensions do
-      starttls(socket, host, opts, timeout)
+      with {:ok, socket} <- starttls(socket, host, opts, timeout),
+           {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout) do
+        {:ok, socket, extensions}
+      end
     else
-      {:ok, socket}
+      {:ok, socket, extensions}
     end
   end
 
