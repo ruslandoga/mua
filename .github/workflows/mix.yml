@@ -42,11 +42,14 @@ jobs:
           - elixir: 1.17
             otp: 25
           - elixir: 1.18
+            otp: 28
+          - elixir: 1.18
             otp: 27
           - elixir: 1.18
             otp: 26
           - elixir: 1.18
             otp: 25
+
         exclude:
           - elixir: 1.15
             otp: 23
@@ -85,5 +88,5 @@ jobs:
       - uses: erlef/setup-beam@v1
         with:
           elixir-version: 1
-          otp-version: 27
+          otp-version: 28
       - run: mix format --check-formatted
