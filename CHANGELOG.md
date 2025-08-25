@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- stop sending double `EHLO` on SSL connections 
+- stop sending double `EHLO` on SSL connections https://github.com/ruslandoga/mua/pull/77
 
 ## v0.2.4 (2024-11-09)
 
