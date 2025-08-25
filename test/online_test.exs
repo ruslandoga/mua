@@ -249,4 +249,22 @@ defmodule Mua.OnlineTest do
              ]
     end
   end
+
+  # https://github.com/ruslandoga/mua/issues/76
+  test "smtp.ionos.de" do
+    assert {:error, %Mua.SMTPError{code: 535} = error} =
+             Mua.easy_send(
+               "smtp.ionos.de",
+               "mua@github.com",
+               _rcpt_to = [],
+               "this is an invalid test message from https://github.com/ruslandoga/mua",
+               port: 465,
+               protocol: :ssl,
+               auth: [username: "username", password: "password"]
+             )
+
+    assert Exception.message(error) == [
+             "535 Authentication credentials invalid\r\n"
+           ]
+  end
 end
