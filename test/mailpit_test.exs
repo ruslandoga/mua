@@ -37,8 +37,8 @@ defmodule Mua.MailpitTest do
                  %{
                    "From" => %{"Address" => "mua@localhost", "Name" => "Mua"},
                    "To" => [%{"Address" => "mailpit@localhost", "Name" => "Mailpit"}],
-                   "Cc" => [],
-                   "Bcc" => []
+                   "Cc" => nil,
+                   "Bcc" => nil
                  }
                ]
              } =
@@ -61,7 +61,7 @@ defmodule Mua.MailpitTest do
                  %{
                    "From" => %{"Address" => "mua@localhost", "Name" => "Mua"},
                    "To" => [%{"Address" => "mailpit@localhost", "Name" => "Mailpit"}],
-                   "Cc" => [],
+                   "Cc" => nil,
                    "Bcc" => [%{"Address" => "bcc@localhost"}]
                  }
                ]

@@ -174,7 +174,7 @@ defmodule Mua.OnlineTest do
       assert Exception.message(error) =~
                """
                530-5.7.0 Authentication Required. For more information, go to\r
-               530 5.7.0  https://support.google.com/mail/?p=WantAuthError\
+               530 5.7.0  https://support.google.com/accounts/troubleshooter/2402620\
                """
     end
 
@@ -194,7 +194,7 @@ defmodule Mua.OnlineTest do
       assert Exception.message(error) =~
                """
                530-5.7.0 Authentication Required. For more information, go to\r
-               530 5.7.0  https://support.google.com/mail/?p=WantAuthError\
+               530 5.7.0  https://support.google.com/accounts/troubleshooter/2402620\
                """
     end
 
