@@ -263,8 +263,6 @@ defmodule Mua.OnlineTest do
                auth: [username: "username", password: "password"]
              )
 
-    assert Exception.message(error) == [
-             "535 Authentication credentials invalid\r\n"
-           ]
+    assert Exception.message(error) == "535 Authentication credentials invalid\r\n"
   end
 end
