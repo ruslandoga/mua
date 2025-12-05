@@ -48,7 +48,7 @@ defmodule Mua.MixProject do
 
   def cli do
     [
-      preferred_envs: [docs: :docs, "hex.publish": :docs, dialyzer: :static]
+      preferred_envs: [docs: :docs, "hex.publish": :docs]
     ]
   end
 
