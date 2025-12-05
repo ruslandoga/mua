@@ -151,13 +151,13 @@ defmodule Mua do
 
   @spec maybe_starttls(
           socket,
-          extensions :: [String.t()],
+          extensions,
           host :: String.t(),
           helo :: String.t(),
           opts :: [:ssl.tls_client_option()],
           timeout
-        ) ::
-          {:ok, socket} | error
+        ) :: {:ok, socket, extensions} | error
+        when extensions: [String.t()]
   defp maybe_starttls(socket, extensions, host, helo, opts, timeout) do
     if is_port(socket) and "STARTTLS" in extensions do
       with {:ok, socket} <- starttls(socket, host, opts, timeout),
