@@ -12,6 +12,15 @@ defmodule Mua.MixProject do
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
+      xref: [
+        exclude: [
+          {:public_key, :cacerts_get, 0}
+        ]
+      ],
+      dialyzer: [
+        plt_local_path: "plts",
+        plt_core_path: "plts"
+      ],
       # hex
       package: package(),
       description: "Minimal SMTP client",
@@ -23,11 +32,6 @@ defmodule Mua.MixProject do
         main: "readme",
         extras: ["README.md", "CHANGELOG.md"],
         skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
-      ],
-      xref: [
-        exclude: [
-          {:public_key, :cacerts_get, 0}
-        ]
       ]
     ]
   end
@@ -44,7 +48,7 @@ defmodule Mua.MixProject do
 
   def cli do
     [
-      preferred_envs: [docs: :docs, "hex.publish": :docs, dialyzer: :static]
+      preferred_envs: [docs: :docs, "hex.publish": :docs]
     ]
   end
 
@@ -62,7 +66,7 @@ defmodule Mua.MixProject do
   defp deps do
     [
       {:castore, "~> 0.1.0 or ~> 1.0", optional: true},
-      {:dialyxir, "~> 1.3", only: :static, runtime: false},
+      {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.29", only: :docs},
       {:decimal, "~> 2.1", only: :test},
       {:jason, "~> 1.4", only: :test},
