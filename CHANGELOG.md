@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.2.6 (2025-12-07)
+
+- fix some type specs, add dialyzer to ci https://github.com/ruslandoga/mua/pull/80
+
 ## v0.2.5 (2025-08-25)
 
 - stop sending double `EHLO` on SSL connections https://github.com/ruslandoga/mua/pull/77
