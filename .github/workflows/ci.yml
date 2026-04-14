@@ -1,4 +1,4 @@
-name: mix
+name: ci
 
 on:
   pull_request:
