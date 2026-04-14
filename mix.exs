@@ -46,12 +46,6 @@ defmodule Mua.MixProject do
   defp extra_applications(env) when env in [:dev, :test], do: [:inets]
   defp extra_applications(_env), do: []
 
-  def cli do
-    [
-      preferred_envs: [docs: :docs, "hex.publish": :docs]
-    ]
-  end
-
   defp package do
     [
       licenses: ["MIT"],
@@ -67,7 +61,7 @@ defmodule Mua.MixProject do
     [
       {:castore, "~> 0.1.0 or ~> 1.0", optional: true},
       {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.29", only: :docs},
+      {:ex_doc, "~> 0.29", only: :dev},
       {:decimal, "~> 2.1", only: :test},
       {:jason, "~> 1.4", only: :test},
       {:mail, "~> 0.5.1", only: :test},
