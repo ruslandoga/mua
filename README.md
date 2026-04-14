@@ -2,6 +2,7 @@
 
 [![Documentation badge](https://img.shields.io/badge/Documentation-ff69b4)](https://hexdocs.pm/mua)
 [![Hex.pm badge](https://img.shields.io/badge/Package%20on%20hex.pm-informational)](https://hex.pm/packages/mua)
+[![Coverage Status](https://coveralls.io/repos/github/ruslandoga/mua/badge.svg?branch=coveralls)](https://coveralls.io/github/ruslandoga/mua?branch=coveralls)
 
 Minimal SMTP client (aka Mail user agent).
 
