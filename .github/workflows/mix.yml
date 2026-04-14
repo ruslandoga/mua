@@ -81,6 +81,9 @@ jobs:
       - run: mix format --check-formatted
         if: ${{ matrix.lint }}
 
+      - uses: crate-ci/typos@master
+        if: ${{ matrix.lint }}
+
       - run: mix test --include mailpit --include online
 
       - name: Restore PLTs cache
