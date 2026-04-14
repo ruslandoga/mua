@@ -21,6 +21,10 @@ defmodule Mua.MixProject do
         plt_local_path: "plts",
         plt_core_path: "plts"
       ],
+      # tests
+      test_coverage: [
+        tool: ExCoveralls
+      ],
       # hex
       package: package(),
       description: "Minimal SMTP client",
@@ -40,6 +44,18 @@ defmodule Mua.MixProject do
   def application do
     [
       extra_applications: [:ssl | extra_applications(Mix.env())]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.json": :test,
+        "coveralls.html": :test,
+        "coveralls.github": :test
+      ]
     ]
   end
 
@@ -65,7 +81,8 @@ defmodule Mua.MixProject do
       {:decimal, "~> 2.1", only: :test},
       {:jason, "~> 1.4", only: :test},
       {:mail, "~> 0.5.1", only: :test},
-      {:benchee, "~> 1.3", only: :bench}
+      {:benchee, "~> 1.3", only: :bench},
+      {:excoveralls, "~> 0.18.5", only: :test}
     ]
   end
 end

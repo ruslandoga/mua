@@ -44,6 +44,7 @@ jobs:
             otp: 28
             lint: true
             dialyzer: true
+            coverage: true
 
     steps:
       - uses: actions/checkout@v6
@@ -83,6 +84,12 @@ jobs:
         if: ${{ matrix.lint }}
 
       - run: mix test --include mailpit --include online
+        if: ${{ !matrix.coverage }}
+
+      - run: mix coveralls.github --include mailpit --include online
+        if: ${{ matrix.coverage }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore PLTs cache
         if: ${{ matrix.dialyzer }}
