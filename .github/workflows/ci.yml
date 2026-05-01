@@ -84,10 +84,10 @@ jobs:
         if: ${{ matrix.lint }}
 
       - run: mix test --include mailpit --include online
-        if: ${{ !matrix.coverage }}
+        if: ${{ !matrix.coverage || github.event_name == 'schedule' }}
 
       - run: mix coveralls.github --include mailpit --include online
-        if: ${{ matrix.coverage }}
+        if: ${{ matrix.coverage && github.event_name != 'schedule' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
