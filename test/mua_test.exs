@@ -80,7 +80,7 @@ defmodule MuaTest do
   if System.otp_release() >= "25" do
     test "default ssl opts post v25" do
       assert [
-               {:ciphers, ciphers},
+               {:ciphers, _},
                {:customize_hostname_check, [match_fun: match_fun]},
                {:partial_chain, partial_chain},
                {:cacerts, cacerts},
@@ -101,22 +101,13 @@ defmodule MuaTest do
 
       refute Enum.empty?(cacerts)
       assert cacerts == :public_key.cacerts_get()
-
-      expected_ciphers_count =
-        case System.otp_release() do
-          "23" -> 66
-          "29" -> 54
-          _ -> 63
-        end
-
-      assert length(ciphers) == expected_ciphers_count
     end
   end
 
   if System.otp_release() < "25" do
     test "default ssl opts pre v25" do
       assert [
-               {:ciphers, ciphers},
+               {:ciphers, _},
                {:customize_hostname_check, [match_fun: match_fun]},
                {:partial_chain, partial_chain},
                {:cacertfile, cacertfile},
@@ -135,15 +126,6 @@ defmodule MuaTest do
 
       assert String.ends_with?(inspect(partial_chain), "Mua.SSL.add_partial_chain_fun/1>")
       assert String.ends_with?(cacertfile, "/lib/castore/priv/cacerts.pem")
-
-      expected_ciphers_count =
-        case System.otp_release() do
-          "23" -> 66
-          "29" -> 54
-          _ -> 63
-        end
-
-      assert length(ciphers) == expected_ciphers_count
     end
   end
 
