@@ -12,11 +12,7 @@ defmodule Mua.MixProject do
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
-      xref: [
-        exclude: [
-          {:public_key, :cacerts_get, 0}
-        ]
-      ],
+      elixirc_options: [no_warn_undefined: [{:public_key, :cacerts_get, 0}]],
       dialyzer: [
         plt_local_path: "plts",
         plt_core_path: "plts"

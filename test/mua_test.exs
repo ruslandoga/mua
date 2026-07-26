@@ -103,10 +103,10 @@ defmodule MuaTest do
       assert cacerts == :public_key.cacerts_get()
 
       expected_ciphers_count =
-        if System.otp_release() == "23" do
-          66
-        else
-          63
+        case System.otp_release() do
+          "23" -> 66
+          "29" -> 54
+          _ -> 63
         end
 
       assert length(ciphers) == expected_ciphers_count
@@ -137,10 +137,10 @@ defmodule MuaTest do
       assert String.ends_with?(cacertfile, "/lib/castore/priv/cacerts.pem")
 
       expected_ciphers_count =
-        if System.otp_release() == "23" do
-          66
-        else
-          63
+        case System.otp_release() do
+          "23" -> 66
+          "29" -> 54
+          _ -> 63
         end
 
       assert length(ciphers) == expected_ciphers_count

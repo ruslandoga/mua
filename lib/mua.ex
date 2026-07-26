@@ -275,9 +275,9 @@ defmodule Mua do
       size = byte_size(line)
 
       case line do
-        <<extension::size(size - 2)-bytes, "\r\n">> -> extension
-        <<extension::size(size - 1)-bytes, ?\n>> -> extension
-        <<extension::size(size - 1)-bytes, ?\r>> -> extension
+        <<extension::size(^size - 2)-bytes, "\r\n">> -> extension
+        <<extension::size(^size - 1)-bytes, ?\n>> -> extension
+        <<extension::size(^size - 1)-bytes, ?\r>> -> extension
       end
     end
   else
