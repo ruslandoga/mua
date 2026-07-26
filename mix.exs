@@ -78,7 +78,6 @@ defmodule Mua.MixProject do
       {:castore, "~> 0.1.0 or ~> 1.0", optional: true},
       {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.29", only: :dev},
-      {:decimal, "~> 2.1", only: :test},
       {:jason, "~> 1.4", only: :test},
       {:mail, "~> 0.5.1", only: :test},
       {:benchee, "~> 1.3", only: :bench},
