@@ -71,6 +71,7 @@ defmodule Mua.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:nimble_pool, "~> 1.1"},
       {:castore, "~> 0.1.0 or ~> 1.0", optional: true},
       {:dialyxir, "~> 1.3", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.29", only: :dev},
