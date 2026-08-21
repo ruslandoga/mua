@@ -3,7 +3,15 @@ defmodule Mua.MailpitTest do
 
   @moduletag :mailpit
 
-  describe "easy_send/4" do
+  @plain_smtp_port 1025
+  @plain_api_port 8025
+  @starttls_smtp_port 1026
+  @starttls_api_port 8026
+  @starttls_no_auth_smtp_port 1027
+  @starttls_no_auth_api_port 8027
+  @timeout :timer.seconds(5)
+
+  describe "easy_send/5" do
     setup do
       now = DateTime.utc_now()
       message_id = "#{System.system_time()}.#{System.unique_integer([:positive])}.mua@localhost"
@@ -28,8 +36,8 @@ defmodule Mua.MailpitTest do
                  _from = "mua@localhost",
                  _rcpts = ["mailpit@localhost"],
                  message.body,
-                 port: 1025,
-                 timeout: :timer.seconds(1)
+                 port: @plain_smtp_port,
+                 timeout: @timeout
                )
 
       assert %{
@@ -42,7 +50,7 @@ defmodule Mua.MailpitTest do
                  }
                ]
              } =
-               mailpit_search(%{"query" => "message-id:" <> message.id})
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @plain_api_port)
     end
 
     test "multiple recipients", %{message: message} do
@@ -52,8 +60,8 @@ defmodule Mua.MailpitTest do
                  _from = "mua@localhost",
                  _rcpts = ["mailpit@localhost", _bcc = "bcc@localhost"],
                  message.body,
-                 port: 1025,
-                 timeout: :timer.seconds(1)
+                 port: @plain_smtp_port,
+                 timeout: @timeout
                )
 
       assert %{
@@ -65,18 +73,19 @@ defmodule Mua.MailpitTest do
                    "Bcc" => [%{"Address" => "bcc@localhost"}]
                  }
                ]
-             } = mailpit_search(%{"query" => "message-id:" <> message.id})
+             } =
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @plain_api_port)
     end
 
-    test "auth", %{message: message} do
+    test "explicit plaintext authentication", %{message: message} do
       assert {:ok, _receipt} =
                Mua.easy_send(
                  _host = "localhost",
                  _from = "mua@localhost",
                  _rcpts = ["mailpit@localhost"],
                  message.body,
-                 port: 1025,
-                 timeout: :timer.seconds(1),
+                 port: @plain_smtp_port,
+                 timeout: @timeout,
                  tls: :never,
                  auth: [username: "username", password: "password"]
                )
@@ -84,11 +93,122 @@ defmodule Mua.MailpitTest do
       assert %{
                "messages" => [
                  %{
+                   "ID" => id,
                    "From" => %{"Address" => "mua@localhost", "Name" => "Mua"},
                    "To" => [%{"Address" => "mailpit@localhost", "Name" => "Mailpit"}]
                  }
                ]
-             } = mailpit_search(%{"query" => "message-id:" <> message.id})
+             } =
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @plain_api_port)
+
+      assert %{"Username" => "username"} = mailpit_summary(id, @plain_api_port)
+    end
+
+    test "explicit opportunistic authentication", %{message: message} do
+      assert {:ok, _receipt} =
+               Mua.easy_send(
+                 "localhost",
+                 "mua@localhost",
+                 ["mailpit@localhost"],
+                 message.body,
+                 port: @plain_smtp_port,
+                 timeout: @timeout,
+                 tls: :if_available,
+                 auth: [username: "username", password: "password"]
+               )
+
+      assert %{"messages" => [%{"ID" => id}]} =
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @plain_api_port)
+
+      assert %{"Username" => "username"} = mailpit_summary(id, @plain_api_port)
+    end
+
+    test "requires STARTTLS by default for authentication", %{message: message} do
+      assert {:error, %Mua.TransportError{reason: :starttls_required}} =
+               Mua.easy_send(
+                 "localhost",
+                 "mua@localhost",
+                 ["mailpit@localhost"],
+                 message.body,
+                 port: @plain_smtp_port,
+                 timeout: @timeout,
+                 auth: [username: "username", password: "password"]
+               )
+
+      assert %{"messages" => []} =
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @plain_api_port)
+    end
+
+    test "authenticates over required STARTTLS", %{message: message} do
+      assert {:ok, _receipt} =
+               Mua.easy_send(
+                 "localhost",
+                 "mua@localhost",
+                 ["mailpit@localhost"],
+                 message.body,
+                 port: @starttls_smtp_port,
+                 timeout: @timeout,
+                 ssl: [verify: :verify_none],
+                 auth: [username: "username", password: "password"]
+               )
+
+      assert %{"messages" => [%{"ID" => id}]} =
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @starttls_api_port)
+
+      assert %{"Username" => "username"} = mailpit_summary(id, @starttls_api_port)
+    end
+
+    test "tls: :never skips advertised STARTTLS", %{message: message} do
+      assert {:error, %Mua.SMTPError{code: 530}} =
+               Mua.easy_send(
+                 "localhost",
+                 "mua@localhost",
+                 ["mailpit@localhost"],
+                 message.body,
+                 port: @starttls_smtp_port,
+                 timeout: @timeout,
+                 tls: :never,
+                 auth: [username: "username", password: "password"]
+               )
+
+      assert %{"messages" => []} =
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @starttls_api_port)
+    end
+
+    test "does not invent an authentication mechanism after STARTTLS", %{message: message} do
+      assert {:error, %Mua.TransportError{reason: :auth_not_supported}} =
+               Mua.easy_send(
+                 "localhost",
+                 "mua@localhost",
+                 ["mailpit@localhost"],
+                 message.body,
+                 port: @starttls_no_auth_smtp_port,
+                 timeout: @timeout,
+                 ssl: [verify: :verify_none],
+                 auth: [username: "username", password: "password"]
+               )
+
+      assert %{"messages" => []} =
+               mailpit_search(
+                 %{"query" => "message-id:" <> message.id},
+                 @starttls_no_auth_api_port
+               )
+    end
+
+    test "does not downgrade after a TLS handshake failure", %{message: message} do
+      assert {:error, %Mua.TransportError{reason: {:tls_alert, _alert}}} =
+               Mua.easy_send(
+                 "localhost",
+                 "mua@localhost",
+                 ["mailpit@localhost"],
+                 message.body,
+                 port: @starttls_smtp_port,
+                 timeout: @timeout,
+                 auth: [username: "username", password: "password"]
+               )
+
+      assert %{"messages" => []} =
+               mailpit_search(%{"query" => "message-id:" <> message.id}, @starttls_api_port)
     end
   end
 
@@ -114,11 +234,12 @@ defmodule Mua.MailpitTest do
                .. and now two dots
                in a line
                """,
-               port: 1025
+               port: @plain_smtp_port,
+               timeout: @timeout
              )
 
     assert %{"messages" => [%{"ID" => id}]} =
-             mailpit_search(%{"query" => "message-id:#{message_id}"})
+             mailpit_search(%{"query" => "message-id:#{message_id}"}, @plain_api_port)
 
     assert %{
              "Text" => """
@@ -129,21 +250,21 @@ defmodule Mua.MailpitTest do
              in a line
              \r
              """
-           } = mailpit_summary(id)
+           } = mailpit_summary(id, @plain_api_port)
   end
 
   # https://mailpit.axllent.org/docs/api-v1/view.html#get-/api/v1/search
-  defp mailpit_search(params) do
-    mailpit_get("/api/v1/search?" <> URI.encode_query(params))
+  defp mailpit_search(params, api_port) do
+    mailpit_get("/api/v1/search?" <> URI.encode_query(params), api_port)
   end
 
   # https://mailpit.axllent.org/docs/api-v1/view.html#get-/api/v1/message/-ID-
-  defp mailpit_summary(id) do
-    mailpit_get("/api/v1/message/#{id}")
+  defp mailpit_summary(id, api_port) do
+    mailpit_get("/api/v1/message/#{id}", api_port)
   end
 
-  defp mailpit_get(path) do
-    url = String.to_charlist(Path.join("http://localhost:8025", path))
+  defp mailpit_get(path, api_port) do
+    url = String.to_charlist("http://localhost:#{api_port}" <> path)
 
     http_opts = [
       timeout: :timer.seconds(15),

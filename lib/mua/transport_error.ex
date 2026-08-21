@@ -13,6 +13,11 @@ defmodule Mua.TransportError do
 
         - `:closed` - if the connection has been closed.
 
+        - `:starttls_required` - if STARTTLS is required but unavailable.
+
+        - `:auth_not_supported` - if the server does not advertise a supported
+          authentication mechanism.
+
         - `t::inet.posix/0` - if there's any other error with the socket,
           such as `:econnrefused` or `:nxdomain`.
 
@@ -20,7 +25,15 @@ defmodule Mua.TransportError do
 
   """
 
-  @type t :: %__MODULE__{reason: :timeout | :closed | :inet.posix() | :ssl.error_alert()}
+  @type t :: %__MODULE__{
+          reason:
+            :timeout
+            | :closed
+            | :starttls_required
+            | :auth_not_supported
+            | :inet.posix()
+            | :ssl.error_alert()
+        }
   defexception [:reason]
 
   def message(%__MODULE__{reason: reason}) do
@@ -29,6 +42,14 @@ defmodule Mua.TransportError do
 
   defp format_reason(:closed), do: "socket closed"
   defp format_reason(:timeout), do: "timeout"
+
+  defp format_reason(:starttls_required) do
+    "STARTTLS is required but was not advertised by the server"
+  end
+
+  defp format_reason(:auth_not_supported) do
+    "the server did not advertise a supported authentication mechanism"
+  end
 
   # :ssl.format_error/1 falls back to :inet.format_error/1 when the error is not an SSL-specific
   # error (at least since OTP 19+), so we can just use that.
