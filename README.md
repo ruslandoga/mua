@@ -53,23 +53,41 @@ like and subscribe
     _mail_from = "mua@github.com",
     _rcpt_to = ["receiver1@mailpit.example", "receiver2@mailpit.example"],
     message,
-    port: 1025,
-    auth: [username: "username", password: "password"]
+    port: 1025
   )
 ```
 
-Low-level API:
+Authenticated TCP connections require STARTTLS by default. The available TLS policies are:
+
+- `tls: :always` requires STARTTLS. This is the default when `auth:` is configured.
+- `tls: :if_available` upgrades when the server advertises STARTTLS. This is the default without authentication.
+- `tls: :never` skips STARTTLS.
+
+Both `:if_available` and `:never` can expose credentials on a plaintext TCP connection. Use them with authentication only when that risk is explicitly acceptable, such as an isolated local Mailpit instance:
 
 ```elixir
-{:ok, socket, _banner} = Mua.connect(:tcp, "localhost", _port = 1025)
+Mua.easy_send("localhost", "mua@github.com", ["mailpit@localhost"], message,
+  port: 1025,
+  tls: :never,
+  auth: [username: "username", password: "password"]
+)
+```
+
+`protocol: :ssl` uses implicit TLS and does not perform STARTTLS.
+
+When STARTTLS is advertised but its command or TLS handshake fails, Mua returns the error and never downgrades to plaintext. A required but unadvertised STARTTLS capability returns `{:error, %Mua.ProtocolError{reason: :starttls_required}}`. Configured credentials without a supported, advertised AUTH mechanism return `{:error, %Mua.ProtocolError{reason: :auth_not_supported}}`.
+
+Secure low-level API:
+
+```elixir
+{:ok, socket, _banner} = Mua.connect(:tcp, "smtp.example.com", _port = 587)
 {:ok, extensions} = Mua.ehlo(socket, _sending_domain = "github.com")
 
-{:ok, socket} =
-  if "STARTTLS" in extensions do
-    Mua.starttls(socket, "localhost")
-  else
-    {:ok, socket}
-  end
+true = Enum.any?(extensions, &(String.upcase(&1) == "STARTTLS"))
+{:ok, socket} = Mua.starttls(socket, "smtp.example.com")
+
+# STARTTLS discards the previous SMTP capability state.
+{:ok, extensions} = Mua.ehlo(socket, _sending_domain = "github.com")
 
 :plain = Mua.pick_auth_method(extensions)
 :ok = Mua.auth(socket, :plain, username: "username", password: "password")

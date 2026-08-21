@@ -77,6 +77,7 @@ defmodule Mua.MailpitTest do
                  message.body,
                  port: 1025,
                  timeout: :timer.seconds(1),
+                 tls: :never,
                  auth: [username: "username", password: "password"]
                )
 
