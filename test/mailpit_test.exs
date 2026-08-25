@@ -90,7 +90,7 @@ defmodule Mua.MailpitTest do
              } = mailpit_search(%{"query" => "message-id:" <> message.id})
     end
 
-    test "pooled auth connection reuse", %{message: message} do
+    test "pooled authenticated deliveries", %{message: message} do
       suffix = System.unique_integer([:positive, :monotonic])
       pool = :"Mua.MailpitTest.Pool#{suffix}"
       start_supervised!({Mua.Pool, name: pool, pool_size: 1})

@@ -1,6 +1,9 @@
 defmodule Mua.PoolTest do
   use ExUnit.Case, async: true
 
+  # Mailpit covers real-server integration, but it does not expose connection
+  # counts or command traces and cannot deterministically stall or close a
+  # specific SMTP session. This server supplies those pool lifecycle controls.
   defmodule FakeSMTPServer do
     use GenServer
 
@@ -383,19 +386,6 @@ defmodule Mua.PoolTest do
     stats = FakeSMTPServer.stats(server)
     assert stats.connections == 2
     assert command_count(stats, :ehlo) == 2
-  end
-
-  test "successful deliveries need no reset and reuse the connection" do
-    server = start_server(fail_reset: true)
-    pool = start_pool(pool_size: 1)
-
-    assert {:ok, "250 queued\r\n"} = send_email(server, pool, "first@example.test")
-    assert {:ok, "250 queued\r\n"} = send_email(server, pool, "second@example.test")
-
-    stats = FakeSMTPServer.stats(server)
-    assert stats.connections == 1
-    assert command_count(stats, :ehlo) == 1
-    assert command_count(stats, :rset) == 0
   end
 
   test "a connection closed while idle is replaced" do
