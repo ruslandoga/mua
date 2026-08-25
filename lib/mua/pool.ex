@@ -99,7 +99,7 @@ defmodule Mua.Pool do
             "Mua.Pool #{inspect(pool)} is not running; start it under your supervision tree"
     end
 
-    case Manager.checkout_pool(manager, config) do
+    case checkout_pool(manager, config) do
       {:ok, nimble_pool, lease} ->
         try do
           NimblePool.checkout!(
@@ -111,11 +111,14 @@ defmodule Mua.Pool do
             pool_timeout
           )
         catch
-          :exit, {:timeout, {NimblePool, :checkout, _args}} ->
-            {:error, Mua.TransportError.exception(reason: :timeout)}
+          :exit, {reason, {NimblePool, :checkout, _args}} = exit_reason ->
+            coordination_error_or_exit(reason, exit_reason, __STACKTRACE__)
         after
           Manager.checkin_pool(manager, lease)
         end
+
+      {:error, %Mua.TransportError{} = error} ->
+        {:error, error}
 
       {:error, reason} ->
         {:error, Mua.TransportError.exception(reason: {:pool_start, reason})}
@@ -132,58 +135,103 @@ defmodule Mua.Pool do
     }
   end
 
-  defp checkout(from, connection, config, sender, recipients, message, timeout) do
-    case ensure_connected(from, connection, config, timeout) do
-      {:ok, connection} ->
+  defp checkout(from, checkout_state, config, sender, recipients, message, timeout) do
+    case ensure_connected(from, checkout_state, config, timeout) do
+      {:ok, status, connection} ->
         result = Mua.Connection.deliver(connection, sender, recipients, message, timeout)
-        {result, checkin_state(from, connection, result, timeout)}
+        {result, checkin_state(from, status, connection, result, timeout)}
 
       {:error, _reason} = error ->
         {error, {:remove, error}}
     end
   end
 
-  defp ensure_connected(_from, %Mua.Connection{} = connection, _config, _timeout) do
-    {:ok, connection}
+  defp ensure_connected(_from, {:reuse, connection}, _config, _timeout) do
+    {:ok, :reuse, connection}
   end
 
-  defp ensure_connected(from, nil, config, timeout) do
+  defp ensure_connected(from, {:fresh, nil}, config, timeout) do
     with {:ok, connection} <- Mua.Connection.connect(config, timeout) do
       :ok = NimblePool.update(from, connection)
-      {:ok, connection}
+      {:ok, :fresh, connection}
     end
   end
 
-  # DATA completion already resets a successful SMTP transaction, but RSET also
-  # verifies that the session is still alive before it goes back into the pool.
-  # Preserve the delivery result if this cleanup fails and evict the connection.
-  defp checkin_state(from, connection, result, timeout) do
+  defp checkin_state(from, status, connection, result, timeout) do
     reusable =
       case result do
+        {:ok, _receipt} ->
+          # A successful DATA command completes and resets the transaction.
+          true
+
         {:error, %Mua.TransportError{}} ->
           false
 
         {:error, %Mua.SMTPError{code: 421}} ->
           false
 
-        _result ->
+        {:error, %Mua.SMTPError{}} ->
+          # An SMTP error may leave a partial transaction behind. Preserve the
+          # delivery error, but only reuse the connection if RSET cleans it up.
           Mua.Connection.reset(connection, timeout) == :ok
       end
 
+    return_connection(from, status, connection, reusable)
+  end
+
+  # Passive socket operations do not require the caller to own the socket. As
+  # in Finch, keep reused connections owned by the pool and only transfer a
+  # freshly opened connection once, before its first checkin.
+  defp return_connection(_from, :reuse, connection, true), do: {:ok, connection}
+
+  defp return_connection(_from, _status, connection, false) do
+    {:remove, connection, :closed}
+  end
+
+  defp return_connection(from, :fresh, connection, true) do
     pool_pid = elem(from, 0)
 
     case Mua.Connection.controlling_process(connection, pool_pid) do
-      :ok when reusable ->
-        {:ok, connection}
-
       :ok ->
-        {:remove, connection, :closed}
+        {:ok, connection}
 
       {:error, _reason} = error ->
         _ = Mua.Connection.close(connection)
         {:remove, connection, error}
     end
   end
+
+  # The supervisor or destination pool can stop between lookup and checkout.
+  # Keep coordination failures in Mua's tagged-error API while allowing exits
+  # raised by delivery code inside the checkout callback to propagate.
+  defp checkout_pool(manager, config) do
+    Manager.checkout_pool(manager, config)
+  catch
+    :exit, {reason, {GenServer, :call, _args}} = exit_reason ->
+      coordination_error_or_exit(reason, exit_reason, __STACKTRACE__)
+  end
+
+  defp coordination_error_or_exit(reason, exit_reason, stacktrace) do
+    case coordination_error(reason) do
+      {:ok, error} -> {:error, error}
+      :error -> :erlang.raise(:exit, exit_reason, stacktrace)
+    end
+  end
+
+  defp coordination_error(:timeout) do
+    {:ok, Mua.TransportError.exception(reason: :timeout)}
+  end
+
+  defp coordination_error(reason)
+       when reason in [:killed, :noconnection, :noproc, :normal, :shutdown] do
+    {:ok, Mua.TransportError.exception(reason: :closed)}
+  end
+
+  defp coordination_error({kind, _detail}) when kind in [:nodedown, :shutdown] do
+    {:ok, Mua.TransportError.exception(reason: :closed)}
+  end
+
+  defp coordination_error(_reason), do: :error
 
   @doc false
   def manager_name(name), do: :"#{name}.Manager"

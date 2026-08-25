@@ -27,14 +27,12 @@ defmodule Mua.Pool.Worker do
 
   @impl NimblePool
   def handle_checkout(:deliver, _from, nil, config) do
-    {:ok, nil, nil, config}
+    {:ok, {:fresh, nil}, nil, config}
   end
 
-  def handle_checkout(:deliver, {client, _ref}, connection, config) do
-    with :ok <- Mua.Connection.set_mode(connection, :passive),
-         :ok <- Mua.Connection.controlling_process(connection, client) do
-      {:ok, connection, connection, config}
-    else
+  def handle_checkout(:deliver, _from, connection, config) do
+    case Mua.Connection.set_mode(connection, :passive) do
+      :ok -> {:ok, {:reuse, connection}, connection, config}
       {:error, reason} -> {:remove, reason, config}
     end
   end

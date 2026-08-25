@@ -44,6 +44,7 @@ defmodule Mua.PoolTest do
          acceptor: acceptor,
          block_data: Keyword.get(opts, :block_data, false),
          close_after_data: Keyword.get(opts, :close_after_data, false),
+         close_after_checkin: Keyword.get(opts, :close_after_checkin, false),
          commands: [],
          connections: 0,
          fail_reset: Keyword.get(opts, :fail_reset, false),
@@ -88,6 +89,9 @@ defmodule Mua.PoolTest do
           kind == :data and state.close_after_data ->
             :close
 
+          kind == :data and state.close_after_checkin ->
+            {:close_after_checkin, state.observer}
+
           kind == :data and state.block_data ->
             {:block, state.observer}
 
@@ -97,7 +101,14 @@ defmodule Mua.PoolTest do
 
       command = {connection, kind, line}
       state = %{state | commands: [command | state.commands]}
-      state = if response == :fail, do: %{state | fail_reset: false}, else: state
+
+      state =
+        case response do
+          :fail -> %{state | fail_reset: false}
+          {:close_after_checkin, _observer} -> %{state | close_after_checkin: false}
+          _response -> state
+        end
+
       {:reply, response, state}
     end
 
@@ -151,7 +162,7 @@ defmodule Mua.PoolTest do
     end
 
     defp respond(socket, server, connection, :ehlo, _reject?) do
-      :ok = :gen_tcp.send(socket, "250 fake-smtp\r\n")
+      :ok = :gen_tcp.send(socket, "250-fake-smtp\r\n250 AUTH PLAIN\r\n")
       command_loop(socket, server, connection)
     end
 
@@ -195,6 +206,20 @@ defmodule Mua.PoolTest do
       command_loop(socket, server, connection)
     end
 
+    defp respond(socket, server, connection, :data, {:close_after_checkin, observer}) do
+      :ok = :gen_tcp.send(socket, "354 send message\r\n")
+      :ok = receive_data(socket)
+      :ok = :gen_tcp.send(socket, "250 queued\r\n")
+      send(observer, {:smtp_delivery_complete, self(), connection})
+
+      receive do
+        :close_connection -> :ok
+      end
+
+      :ok = :gen_tcp.close(socket)
+      GenServer.cast(server, {:closed, connection})
+    end
+
     defp respond(socket, server, connection, :data, _response) do
       :ok = :gen_tcp.send(socket, "354 send message\r\n")
       :ok = receive_data(socket)
@@ -209,6 +234,11 @@ defmodule Mua.PoolTest do
 
     defp respond(socket, server, connection, :rset, _response) do
       :ok = :gen_tcp.send(socket, "250 reset\r\n")
+      command_loop(socket, server, connection)
+    end
+
+    defp respond(socket, server, connection, :auth, _response) do
+      :ok = :gen_tcp.send(socket, "235 authenticated\r\n")
       command_loop(socket, server, connection)
     end
 
@@ -236,6 +266,7 @@ defmodule Mua.PoolTest do
         String.starts_with?(line, "HELO ") -> :helo
         String.starts_with?(line, "MAIL FROM:") -> :mail_from
         String.starts_with?(line, "RCPT TO:") -> :rcpt_to
+        String.starts_with?(line, "AUTH PLAIN ") -> :auth
         line == "DATA\r\n" -> :data
         line == "RSET\r\n" -> :rset
         line == "QUIT\r\n" -> :quit
@@ -264,7 +295,7 @@ defmodule Mua.PoolTest do
     assert command_count(stats, :ehlo) == 1
     assert command_count(stats, :mail_from) == 2
     assert command_count(stats, :data) == 2
-    assert command_count(stats, :rset) == 2
+    assert command_count(stats, :rset) == 0
   end
 
   test "a rejected recipient is reset and the connection is reused" do
@@ -288,8 +319,7 @@ defmodule Mua.PoolTest do
              :rset,
              :mail_from,
              :rcpt_to,
-             :data,
-             :rset
+             :data
            ]
   end
 
@@ -308,6 +338,32 @@ defmodule Mua.PoolTest do
     assert %{connections: 1} = second_stats = FakeSMTPServer.stats(second_server)
     assert command_count(first_stats, :ehlo) == 1
     assert command_count(second_stats, :ehlo) == 1
+  end
+
+  test "the complete connection configuration isolates sessions" do
+    server = start_server()
+    pool = start_pool(pool_size: 1)
+
+    assert {:ok, _receipt} = send_email(server, pool, "baseline@example.test")
+
+    assert {:ok, _receipt} =
+             send_email(server, pool, "helo@example.test", sender: "sender@other.test")
+
+    assert {:ok, _receipt} =
+             send_email(server, pool, "auth@example.test",
+               auth: [username: "username", password: "password"]
+             )
+
+    assert {:ok, _receipt} =
+             send_email(server, pool, "tcp-options@example.test", tcp: [nodelay: true])
+
+    assert {:ok, _receipt} =
+             send_email(server, pool, "tls-options@example.test", ssl: [verify: :verify_none])
+
+    stats = FakeSMTPServer.stats(server)
+    assert stats.connections == 5
+    assert command_count(stats, :ehlo) == 5
+    assert command_count(stats, :auth) == 1
   end
 
   test "a failed reset evicts the connection" do
@@ -329,7 +385,7 @@ defmodule Mua.PoolTest do
     assert command_count(stats, :ehlo) == 2
   end
 
-  test "a failed reset does not turn an accepted message into an error" do
+  test "successful deliveries need no reset and reuse the connection" do
     server = start_server(fail_reset: true)
     pool = start_pool(pool_size: 1)
 
@@ -337,8 +393,9 @@ defmodule Mua.PoolTest do
     assert {:ok, "250 queued\r\n"} = send_email(server, pool, "second@example.test")
 
     stats = FakeSMTPServer.stats(server)
-    assert stats.connections == 2
-    assert command_count(stats, :ehlo) == 2
+    assert stats.connections == 1
+    assert command_count(stats, :ehlo) == 1
+    assert command_count(stats, :rset) == 0
   end
 
   test "a connection closed while idle is replaced" do
@@ -351,6 +408,50 @@ defmodule Mua.PoolTest do
     stats = FakeSMTPServer.stats(server)
     assert stats.connections == 2
     assert command_count(stats, :ehlo) == 2
+  end
+
+  test "an unsolicited close after checkin removes the idle connection" do
+    server = start_server(close_after_checkin: true)
+    pool = start_pool(pool_size: 1)
+
+    assert {:ok, "250 queued\r\n"} = send_email(server, pool, "first@example.test")
+    assert_receive {:smtp_delivery_complete, handler, 1}, 1_000
+
+    destination_pool = destination_pool(pool)
+    assert_eventually(fn -> pool_resource_count(destination_pool) == 1 end)
+
+    send(handler, :close_connection)
+    assert_receive {:smtp_connection_closed, ^server, 1}, 1_000
+    assert_eventually(fn -> pool_resource_count(destination_pool) == 0 end)
+
+    assert {:ok, "250 queued\r\n"} = send_email(server, pool, "second@example.test")
+
+    stats = FakeSMTPServer.stats(server)
+    assert stats.connections == 2
+    assert command_count(stats, :ehlo) == 2
+  end
+
+  test "a caller crash releases its destination pool lease" do
+    server = start_server(block_data: true)
+    pool = start_pool(pool_max_idle_time: 0, pool_size: 1)
+
+    caller =
+      spawn(fn ->
+        send_email(server, pool, "recipient@example.test")
+      end)
+
+    caller_monitor = Process.monitor(caller)
+    assert_receive {:smtp_data_waiting, handler}, 1_000
+
+    destination_pool = destination_pool(pool)
+    pool_monitor = Process.monitor(destination_pool)
+
+    Process.exit(caller, :kill)
+
+    assert_receive {:DOWN, ^caller_monitor, :process, ^caller, :killed}, 1_000
+    assert_receive {:DOWN, ^pool_monitor, :process, ^destination_pool, _reason}, 1_000
+
+    Process.exit(handler, :kill)
   end
 
   test "a connection is closed when session setup raises" do
@@ -405,6 +506,44 @@ defmodule Mua.PoolTest do
     assert {:ok, "250 queued\r\n"} = Task.await(delivery, 2_000)
   end
 
+  test "a manager stopping during pool lookup returns a transport error" do
+    server = start_server()
+    pool = start_pool(pool_size: 1)
+    manager = Process.whereis(Mua.Pool.manager_name(pool))
+    :ok = :sys.suspend(manager)
+
+    {caller, caller_monitor, result_ref} =
+      spawn_delivery(fn -> send_email(server, pool, "recipient@example.test") end)
+
+    assert_eventually(fn -> call_queued?(manager, caller) end)
+    Process.exit(manager, :kill)
+
+    assert_receive {^result_ref, {:error, %Mua.TransportError{reason: :closed}}}, 1_000
+    assert_receive {:DOWN, ^caller_monitor, :process, ^caller, :normal}, 1_000
+  end
+
+  test "a destination pool stopping during checkout returns a transport error" do
+    server = start_server()
+    pool = start_pool(pool_size: 1)
+
+    assert {:ok, "250 queued\r\n"} = send_email(server, pool, "first@example.test")
+
+    destination_pool = destination_pool(pool)
+    :ok = :sys.suspend(destination_pool)
+
+    {caller, caller_monitor, result_ref} =
+      spawn_delivery(fn -> send_email(server, pool, "second@example.test") end)
+
+    assert_eventually(fn -> call_queued?(destination_pool, caller) end)
+    Process.exit(destination_pool, :kill)
+
+    assert_receive {^result_ref, {:error, %Mua.TransportError{reason: :closed}}}, 1_000
+    assert_receive {:DOWN, ^caller_monitor, :process, ^caller, :normal}, 1_000
+
+    assert {:ok, "250 queued\r\n"} = send_email(server, pool, "third@example.test")
+    assert FakeSMTPServer.stats(server).connections == 2
+  end
+
   test "pool_size allows concurrent deliveries" do
     server = start_server(block_data: true)
     pool = start_pool(pool_size: 2)
@@ -452,6 +591,8 @@ defmodule Mua.PoolTest do
   end
 
   defp send_email(server, pool, recipient, opts \\ []) do
+    {sender, opts} = Keyword.pop(opts, :sender, "sender@example.test")
+
     opts =
       Keyword.merge(
         [
@@ -465,7 +606,7 @@ defmodule Mua.PoolTest do
 
     Mua.easy_send(
       {127, 0, 0, 1},
-      "sender@example.test",
+      sender,
       [recipient],
       "Subject: pooling\r\n\r\nhello",
       opts
@@ -478,5 +619,58 @@ defmodule Mua.PoolTest do
 
   defp command_kinds(stats) do
     Enum.map(stats.commands, fn {_connection, command, _line} -> command end)
+  end
+
+  defp spawn_delivery(delivery) do
+    parent = self()
+    result_ref = make_ref()
+
+    {caller, monitor} =
+      spawn_monitor(fn ->
+        send(parent, {result_ref, delivery.()})
+      end)
+
+    {caller, monitor, result_ref}
+  end
+
+  defp call_queued?(server, caller) do
+    case Process.info(server, :messages) do
+      {:messages, messages} ->
+        Enum.any?(messages, fn
+          {:"$gen_call", {^caller, _ref}, _request} -> true
+          _message -> false
+        end)
+
+      nil ->
+        false
+    end
+  end
+
+  defp destination_pool(pool) do
+    %{pools: pools} = :sys.get_state(Mua.Pool.manager_name(pool))
+    [%{pid: destination_pool}] = Map.values(pools)
+    destination_pool
+  end
+
+  defp pool_resource_count(pool) do
+    pool
+    |> :sys.get_state()
+    |> Map.fetch!(:resources)
+    |> :queue.len()
+  end
+
+  defp assert_eventually(assertion, attempts \\ 100)
+
+  defp assert_eventually(assertion, attempts) when attempts > 0 do
+    if assertion.() do
+      :ok
+    else
+      Process.sleep(10)
+      assert_eventually(assertion, attempts - 1)
+    end
+  end
+
+  defp assert_eventually(assertion, 0) do
+    assert assertion.()
   end
 end

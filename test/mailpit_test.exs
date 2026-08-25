@@ -90,31 +90,39 @@ defmodule Mua.MailpitTest do
              } = mailpit_search(%{"query" => "message-id:" <> message.id})
     end
 
-    test "pooled auth", %{message: message} do
+    test "pooled auth connection reuse", %{message: message} do
       suffix = System.unique_integer([:positive, :monotonic])
       pool = :"Mua.MailpitTest.Pool#{suffix}"
       start_supervised!({Mua.Pool, name: pool, pool_size: 1})
 
-      assert {:ok, _receipt} =
-               Mua.easy_send(
-                 _host = "localhost",
-                 _from = "mua@localhost",
-                 _rcpts = ["mailpit@localhost"],
-                 message.body,
-                 auth: [username: "username", password: "password"],
-                 pool: pool,
-                 port: 1025,
-                 timeout: :timer.seconds(1)
-               )
+      second_id = "#{System.system_time()}.#{System.unique_integer([:positive])}.mua@localhost"
+      second_body = String.replace(message.body, message.id, second_id)
 
-      assert %{
-               "messages" => [
-                 %{
-                   "From" => %{"Address" => "mua@localhost", "Name" => "Mua"},
-                   "To" => [%{"Address" => "mailpit@localhost", "Name" => "Mailpit"}]
-                 }
-               ]
-             } = mailpit_search(%{"query" => "message-id:" <> message.id})
+      for {message_id, message_body} <- [
+            {message.id, message.body},
+            {second_id, second_body}
+          ] do
+        assert {:ok, _receipt} =
+                 Mua.easy_send(
+                   _host = "localhost",
+                   _from = "mua@localhost",
+                   _rcpts = ["mailpit@localhost"],
+                   message_body,
+                   auth: [username: "username", password: "password"],
+                   pool: pool,
+                   port: 1025,
+                   timeout: :timer.seconds(1)
+                 )
+
+        assert %{
+                 "messages" => [
+                   %{
+                     "From" => %{"Address" => "mua@localhost", "Name" => "Mua"},
+                     "To" => [%{"Address" => "mailpit@localhost", "Name" => "Mailpit"}]
+                   }
+                 ]
+               } = mailpit_search(%{"query" => "message-id:" <> message_id})
+      end
     end
   end
 

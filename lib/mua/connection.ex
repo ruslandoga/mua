@@ -109,8 +109,8 @@ defmodule Mua.Connection do
   end
 
   @spec set_mode(t, :active | :passive) :: :ok | Mua.error()
-  def set_mode(%__MODULE__{socket: socket}, mode) do
-    active = mode == :active
+  def set_mode(%__MODULE__{socket: socket}, mode) when mode in [:active, :passive] do
+    active = if mode == :active, do: :once, else: false
 
     result =
       if is_port(socket) do
