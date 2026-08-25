@@ -18,9 +18,17 @@ defmodule Mua.TransportError do
 
         - `t::ssl.error_alert/0` - if there's an SSL error.
 
+        - `{:pool_start, term}` - if a destination pool could not be started.
+
   """
 
-  @type t :: %__MODULE__{reason: :timeout | :closed | :inet.posix() | :ssl.error_alert()}
+  @type reason ::
+          :timeout
+          | :closed
+          | :inet.posix()
+          | :ssl.error_alert()
+          | {:pool_start, term}
+  @type t :: %__MODULE__{reason: reason}
   defexception [:reason]
 
   def message(%__MODULE__{reason: reason}) do
@@ -29,6 +37,9 @@ defmodule Mua.TransportError do
 
   defp format_reason(:closed), do: "socket closed"
   defp format_reason(:timeout), do: "timeout"
+
+  defp format_reason({:pool_start, reason}),
+    do: "could not start connection pool: #{inspect(reason)}"
 
   # :ssl.format_error/1 falls back to :inet.format_error/1 when the error is not an SSL-specific
   # error (at least since OTP 19+), so we can just use that.
