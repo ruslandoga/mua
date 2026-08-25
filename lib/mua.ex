@@ -12,13 +12,13 @@ defmodule Mua do
   @type error :: {:error, Mua.SMTPError.t() | Mua.TransportError.t()}
   @type auth_method :: :login | :plain
   @type auth_credentials :: [username: String.t(), password: String.t()]
-  @type tls_policy :: :always | :if_available | :never
+  @type starttls_policy :: :always | :if_available | :never
   @type option ::
           {:timeout, timeout}
           | {:mx, boolean}
           | {:protocol, :tcp | :ssl}
           | {:auth, auth_credentials}
-          | {:tls, tls_policy}
+          | {:starttls, starttls_policy}
           | {:port, :inet.port_number()}
           | {:tcp, [:gen_tcp.connect_option()]}
           | {:ssl, [:ssl.tls_client_option()]}
@@ -71,26 +71,26 @@ defmodule Mua do
           port: 25
         )
 
-  The `:tls` option controls STARTTLS for TCP connections:
+  The `:starttls` option controls STARTTLS for TCP connections:
 
     * `:always` requires STARTTLS to be advertised and successfully negotiated.
     * `:if_available` negotiates STARTTLS when the server advertises it.
     * `:never` does not attempt STARTTLS.
 
-  Connections with authentication credentials default to `tls: :always`. Other
-  TCP connections default to `tls: :if_available`. Connections using
+  Connections with authentication credentials default to `starttls: :always`.
+  Other TCP connections default to `starttls: :if_available`. Connections using
   `protocol: :ssl` are already encrypted and do not use STARTTLS.
 
-  Using `tls: :if_available` or `tls: :never` with authentication may expose
-  credentials over a plaintext TCP connection and must be an explicit choice.
-  Once a server advertises STARTTLS, a rejected command or failed handshake is
-  returned as an error and never downgraded to plaintext.
+  Using `starttls: :if_available` or `starttls: :never` with authentication may
+  expose credentials over a plaintext TCP connection and must be an explicit
+  choice. Once a server advertises STARTTLS, a rejected command or failed
+  handshake is returned as an error and never downgraded to plaintext.
 
   """
   @spec easy_send(String.t() | :inet.ip_address(), String.t(), [String.t()], iodata, [option]) ::
           {:ok, receipt :: String.t()} | error
   def easy_send(host, sender, recipients, message, opts \\ []) do
-    opts = Keyword.put(opts, :tls, tls_policy(opts))
+    opts = Keyword.put(opts, :starttls, starttls_policy(opts))
     [_, sender_hostname] = String.split(sender, "@")
 
     hosts =
@@ -135,7 +135,7 @@ defmodule Mua do
     sock_opts = opts[proto] || []
     ssl_opts = opts[:ssl] || []
     auth_creds = opts[:auth]
-    tls_policy = opts[:tls]
+    starttls_policy = opts[:starttls]
 
     with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
       try do
@@ -148,7 +148,7 @@ defmodule Mua do
                  host,
                  helo,
                  ssl_opts,
-                 tls_policy,
+                 starttls_policy,
                  timeout
                ),
              :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
@@ -170,16 +170,16 @@ defmodule Mua do
 
   defp many_rcpt_to([], _socket, _timeout), do: :ok
 
-  defp tls_policy(opts) do
+  defp starttls_policy(opts) do
     default = if opts[:auth], do: :always, else: :if_available
 
-    case Keyword.get(opts, :tls, default) do
+    case Keyword.get(opts, :starttls, default) do
       policy when policy in [:always, :if_available, :never] ->
         policy
 
       policy ->
         raise ArgumentError,
-              "expected :tls to be :always, :if_available, or :never, got: #{inspect(policy)}"
+              "expected :starttls to be :always, :if_available, or :never, got: #{inspect(policy)}"
     end
   end
 
@@ -197,7 +197,7 @@ defmodule Mua do
           host :: String.t(),
           helo :: String.t(),
           opts :: [:ssl.tls_client_option()],
-          tls_policy,
+          starttls_policy,
           timeout
         ) :: {:ok, socket, extensions} | error
         when extensions: [String.t()]

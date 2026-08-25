@@ -86,7 +86,7 @@ defmodule Mua.MailpitTest do
                  message.body,
                  port: @plain_smtp_port,
                  timeout: @timeout,
-                 tls: :never,
+                 starttls: :never,
                  auth: [username: "username", password: "password"]
                )
 
@@ -113,7 +113,7 @@ defmodule Mua.MailpitTest do
                  message.body,
                  port: @plain_smtp_port,
                  timeout: @timeout,
-                 tls: :if_available,
+                 starttls: :if_available,
                  auth: [username: "username", password: "password"]
                )
 
@@ -158,7 +158,7 @@ defmodule Mua.MailpitTest do
       assert %{"Username" => "username"} = mailpit_summary(id, @starttls_api_port)
     end
 
-    test "tls: :never skips advertised STARTTLS", %{message: message} do
+    test "starttls: :never skips advertised STARTTLS", %{message: message} do
       assert {:error, %Mua.SMTPError{code: 530}} =
                Mua.easy_send(
                  "localhost",
@@ -167,7 +167,7 @@ defmodule Mua.MailpitTest do
                  message.body,
                  port: @starttls_smtp_port,
                  timeout: @timeout,
-                 tls: :never,
+                 starttls: :never,
                  auth: [username: "username", password: "password"]
                )
 

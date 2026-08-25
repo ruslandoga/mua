@@ -64,16 +64,16 @@ defmodule MuaTest do
     end
   end
 
-  test "rejects an invalid TLS policy before connecting" do
+  test "rejects an invalid STARTTLS policy before connecting" do
     assert_raise ArgumentError,
-                 "expected :tls to be :always, :if_available, or :never, got: :sometimes",
+                 "expected :starttls to be :always, :if_available, or :never, got: :sometimes",
                  fn ->
                    Mua.easy_send(
                      "localhost",
                      "alice@example.com",
                      ["bob@example.net"],
                      "message",
-                     tls: :sometimes
+                     starttls: :sometimes
                    )
                  end
   end

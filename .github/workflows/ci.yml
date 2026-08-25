@@ -18,21 +18,23 @@ jobs:
 
     services:
       mailpit:
-        image: axllent/mailpit:v1.30.7
+        image: ghcr.io/axllent/mailpit:v1.30.7
         ports:
           - 1025:1025
           - 8025:8025
         env:
+          MP_DISABLE_VERSION_CHECK: "1"
           MP_SMTP_AUTH_ACCEPT_ANY: "1"
           MP_SMTP_AUTH_ALLOW_INSECURE: "1"
           MP_SMTP_DISABLE_RDNS: "1"
 
       mailpit_starttls:
-        image: axllent/mailpit:v1.30.7
+        image: ghcr.io/axllent/mailpit:v1.30.7
         ports:
           - 1026:1025
           - 8026:8025
         env:
+          MP_DISABLE_VERSION_CHECK: "1"
           MP_SMTP_AUTH_ACCEPT_ANY: "1"
           MP_SMTP_DISABLE_RDNS: "1"
           MP_SMTP_REQUIRE_STARTTLS: "1"
@@ -40,11 +42,12 @@ jobs:
           MP_SMTP_TLS_KEY: "sans:localhost"
 
       mailpit_starttls_no_auth:
-        image: axllent/mailpit:v1.30.7
+        image: ghcr.io/axllent/mailpit:v1.30.7
         ports:
           - 1027:1025
           - 8027:8025
         env:
+          MP_DISABLE_VERSION_CHECK: "1"
           MP_SMTP_DISABLE_RDNS: "1"
           MP_SMTP_REQUIRE_STARTTLS: "1"
           MP_SMTP_TLS_CERT: "sans:localhost"

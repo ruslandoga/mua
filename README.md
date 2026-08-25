@@ -27,10 +27,10 @@ end
 
 ## Usage
 
-This demo will use [Mailpit:](https://github.com/axllent/mailpit)
+From a checkout of this repository, start [Mailpit](https://github.com/axllent/mailpit):
 
 ```console
-$ docker run -d --rm -p 1025:1025 -p 8025:8025 -e "MP_SMTP_AUTH_ACCEPT_ANY=1" -e "MP_SMTP_AUTH_ALLOW_INSECURE=1" --name mailpit axllent/mailpit
+$ docker compose up -d --wait mailpit
 $ open http://localhost:8025
 ```
 
@@ -57,18 +57,18 @@ like and subscribe
   )
 ```
 
-Authenticated TCP connections require STARTTLS by default. The available TLS policies are:
+Authenticated TCP connections require STARTTLS by default. The available STARTTLS policies are:
 
-- `tls: :always` requires STARTTLS. This is the default when `auth:` is configured.
-- `tls: :if_available` upgrades when the server advertises STARTTLS. This is the default without authentication.
-- `tls: :never` skips STARTTLS.
+- `starttls: :always` requires STARTTLS. This is the default when `auth:` is configured.
+- `starttls: :if_available` upgrades when the server advertises STARTTLS. This is the default without authentication.
+- `starttls: :never` skips STARTTLS.
 
 Both `:if_available` and `:never` can expose credentials on a plaintext TCP connection. Use them with authentication only when that risk is explicitly acceptable, such as an isolated local Mailpit instance:
 
 ```elixir
 Mua.easy_send("localhost", "mua@github.com", ["mailpit@localhost"], message,
   port: 1025,
-  tls: :never,
+  starttls: :never,
   auth: [username: "username", password: "password"]
 )
 ```

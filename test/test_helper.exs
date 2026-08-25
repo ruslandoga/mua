@@ -32,11 +32,9 @@ if :mailpit in include do
 
   if unavailable_ports != [] do
     shell.error("""
-    To enable Mailpit tests, start all three local containers:
+    To enable Mailpit tests, start the local services:
 
-        docker run -d --rm -p 1025:1025 -p 8025:8025 -e "MP_SMTP_AUTH_ACCEPT_ANY=1" -e "MP_SMTP_AUTH_ALLOW_INSECURE=1" -e "MP_SMTP_DISABLE_RDNS=1" --name mua-mailpit axllent/mailpit:v1.30.7
-        docker run -d --rm -p 1026:1025 -p 8026:8025 -e "MP_SMTP_AUTH_ACCEPT_ANY=1" -e "MP_SMTP_DISABLE_RDNS=1" -e "MP_SMTP_REQUIRE_STARTTLS=1" -e "MP_SMTP_TLS_CERT=sans:localhost" -e "MP_SMTP_TLS_KEY=sans:localhost" --name mua-mailpit-starttls axllent/mailpit:v1.30.7
-        docker run -d --rm -p 1027:1025 -p 8027:8025 -e "MP_SMTP_DISABLE_RDNS=1" -e "MP_SMTP_REQUIRE_STARTTLS=1" -e "MP_SMTP_TLS_CERT=sans:localhost" -e "MP_SMTP_TLS_KEY=sans:localhost" --name mua-mailpit-starttls-no-auth axllent/mailpit:v1.30.7
+        docker compose up -d --wait
 
     Unavailable Mailpit API ports: #{Enum.join(unavailable_ports, ", ")}
     """)
