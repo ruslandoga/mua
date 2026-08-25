@@ -124,7 +124,7 @@ defmodule Mua.MailpitTest do
     end
 
     test "requires STARTTLS by default for authentication", %{message: message} do
-      assert {:error, %Mua.TransportError{reason: :starttls_required}} =
+      assert {:error, %Mua.ProtocolError{reason: :starttls_required}} =
                Mua.easy_send(
                  "localhost",
                  "mua@localhost",
@@ -176,7 +176,7 @@ defmodule Mua.MailpitTest do
     end
 
     test "does not invent an authentication mechanism after STARTTLS", %{message: message} do
-      assert {:error, %Mua.TransportError{reason: :auth_not_supported}} =
+      assert {:error, %Mua.ProtocolError{reason: :auth_not_supported}} =
                Mua.easy_send(
                  "localhost",
                  "mua@localhost",

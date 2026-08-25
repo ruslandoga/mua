@@ -3,7 +3,7 @@
 ## Unreleased
 
 - require STARTTLS by default for authenticated TCP `easy_send/5` connections
-- return `Mua.TransportError` with `:starttls_required` or `:auth_not_supported` when a server cannot satisfy the configured authentication policy
+- return `Mua.ProtocolError` with `:starttls_required` or `:auth_not_supported` when a server cannot satisfy the configured authentication policy
 - stop attempting authentication mechanisms that the server did not advertise and handle STARTTLS/AUTH extension names case-insensitively
 - use `starttls: :never` for intentionally plaintext authentication, or `starttls: :if_available` to preserve explicitly opportunistic behavior
 

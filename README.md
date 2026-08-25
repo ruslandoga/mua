@@ -75,7 +75,7 @@ Mua.easy_send("localhost", "mua@github.com", ["mailpit@localhost"], message,
 
 `protocol: :ssl` uses implicit TLS and does not perform STARTTLS.
 
-When STARTTLS is advertised but its command or TLS handshake fails, Mua returns the error and never downgrades to plaintext. A required but unadvertised STARTTLS capability returns `{:error, %Mua.TransportError{reason: :starttls_required}}`. Configured credentials without a supported, advertised AUTH mechanism return `{:error, %Mua.TransportError{reason: :auth_not_supported}}`.
+When STARTTLS is advertised but its command or TLS handshake fails, Mua returns the error and never downgrades to plaintext. A required but unadvertised STARTTLS capability returns `{:error, %Mua.ProtocolError{reason: :starttls_required}}`. Configured credentials without a supported, advertised AUTH mechanism return `{:error, %Mua.ProtocolError{reason: :auth_not_supported}}`.
 
 Secure low-level API:
 

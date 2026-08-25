@@ -9,7 +9,8 @@ defmodule Mua do
 
   @type host :: :inet.socket_address() | :inet.hostname() | String.t()
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
-  @type error :: {:error, Mua.SMTPError.t() | Mua.TransportError.t()}
+  @type error ::
+          {:error, Mua.ProtocolError.t() | Mua.SMTPError.t() | Mua.TransportError.t()}
   @type auth_method :: :login | :plain
   @type auth_credentials :: [username: String.t(), password: String.t()]
   @type starttls_policy :: :always | :if_available | :never
@@ -116,6 +117,13 @@ defmodule Mua do
       {:error, %Mua.SMTPError{}} = error ->
         error
 
+      # capability policies can be retried before any credentials are sent
+      {:error, %Mua.ProtocolError{}} when hosts != [] ->
+        easy_send_any(hosts, helo, sender, recipients, message, opts)
+
+      {:error, %Mua.ProtocolError{}} = error ->
+        error
+
       # transport errors can be retried
       {:error, %Mua.TransportError{}} when hosts != [] ->
         easy_send_any(hosts, helo, sender, recipients, message, opts)
@@ -217,7 +225,7 @@ defmodule Mua do
         end
 
       policy == :always ->
-        transport_error(:starttls_required)
+        protocol_error(:starttls_required)
 
       true ->
         {:ok, socket, extensions}
@@ -229,7 +237,7 @@ defmodule Mua do
 
   defp maybe_auth(extensions, socket, auth_creds, timeout) do
     case pick_auth_method(extensions) do
-      nil -> transport_error(:auth_not_supported)
+      nil -> protocol_error(:auth_not_supported)
       method -> auth(socket, method, auth_creds, timeout)
     end
   end
@@ -648,6 +656,11 @@ defmodule Mua do
   @compile inline: [transport_error: 1]
   defp transport_error(reason) do
     {:error, Mua.TransportError.exception(reason: reason)}
+  end
+
+  @compile inline: [protocol_error: 1]
+  defp protocol_error(reason) do
+    {:error, Mua.ProtocolError.exception(reason: reason)}
   end
 
   # TODO implement proper RFC2822

@@ -88,18 +88,20 @@ defmodule MuaTest do
     assert Exception.message(Mua.TransportError.exception(reason: :econnrefused)) ==
              "connection refused"
 
-    assert Exception.message(Mua.TransportError.exception(reason: :starttls_required)) ==
-             "STARTTLS is required but was not advertised by the server"
-
-    assert Exception.message(Mua.TransportError.exception(reason: :auth_not_supported)) ==
-             "the server did not advertise a supported authentication mechanism"
-
     assert Exception.message(Mua.TransportError.exception(reason: :mua_sad)) ==
              ":mua_sad"
   end
 
   test "smtp_error message" do
     assert Exception.message(Mua.SMTPError.exception(code: 123, lines: ["a\n", "b"])) == "a\nb"
+  end
+
+  test "protocol_error message" do
+    assert Exception.message(Mua.ProtocolError.exception(reason: :starttls_required)) ==
+             "STARTTLS is required but was not advertised by the server"
+
+    assert Exception.message(Mua.ProtocolError.exception(reason: :auth_not_supported)) ==
+             "the server did not advertise a supported authentication mechanism"
   end
 
   if System.otp_release() >= "25" do
