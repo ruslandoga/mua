@@ -57,6 +57,25 @@ defmodule MuaTest do
 
       assert Mua.pick_auth_method(extensions) == :login
     end
+
+    test "extension and mechanism names are case-insensitive" do
+      assert Mua.pick_auth_method(["auth plain login"]) == :plain
+      assert Mua.pick_auth_method(["AuTh LoGiN PLAIN"]) == :login
+    end
+  end
+
+  test "rejects an invalid STARTTLS policy before connecting" do
+    assert_raise ArgumentError,
+                 "expected :starttls to be :always, :if_available, or :never, got: :sometimes",
+                 fn ->
+                   Mua.easy_send(
+                     "localhost",
+                     "alice@example.com",
+                     ["bob@example.net"],
+                     "message",
+                     starttls: :sometimes
+                   )
+                 end
   end
 
   test "transport_error message" do
@@ -75,6 +94,14 @@ defmodule MuaTest do
 
   test "smtp_error message" do
     assert Exception.message(Mua.SMTPError.exception(code: 123, lines: ["a\n", "b"])) == "a\nb"
+  end
+
+  test "protocol_error message" do
+    assert Exception.message(Mua.ProtocolError.exception(reason: :starttls_required)) ==
+             "STARTTLS is required but was not advertised by the server"
+
+    assert Exception.message(Mua.ProtocolError.exception(reason: :auth_not_supported)) ==
+             "the server did not advertise a supported authentication mechanism"
   end
 
   if System.otp_release() >= "25" do
