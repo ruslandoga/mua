@@ -14,6 +14,8 @@ defmodule Mua do
   @type auth_credentials :: [username: String.t(), password: String.t()]
   @type option ::
           {:timeout, timeout}
+          | {:pool, Mua.Pool.name()}
+          | {:pool_timeout, timeout}
           | {:mx, boolean}
           | {:protocol, :tcp | :ssl}
           | {:auth, auth_credentials}
@@ -47,6 +49,11 @@ defmodule Mua do
 
   @doc """
   Utility function to send a message to a list of recipients on a host.
+
+  By default, the connection is closed after the message is sent. Pass the
+  name of a supervised `Mua.Pool` as `:pool` to reuse connections. The
+  `:pool_timeout` option controls how long to wait for a pooled connection and
+  defaults to five seconds.
 
       # sending via a relay
       {:ok, _receipt} =
@@ -111,70 +118,31 @@ defmodule Mua do
   # TODO build %Mua.Result{} with what has happened on the connection (tls or not, etc.)
 
   defp easy_send_one(host, helo, sender, recipients, message, opts) do
-    port = opts[:port] || 25
-    proto = opts[:protocol] || :tcp
     timeout = opts[:timeout] || @default_timeout
-    sock_opts = opts[proto] || []
-    ssl_opts = opts[:ssl] || []
-    auth_creds = opts[:auth]
+    config = Mua.Connection.config(host, helo, opts)
 
-    with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
+    if pool = opts[:pool] do
+      Mua.Pool.deliver(pool, config, sender, recipients, message,
+        timeout: timeout,
+        pool_timeout: opts[:pool_timeout] || :timer.seconds(5)
+      )
+    else
+      easy_send_unpooled(config, sender, recipients, message, timeout)
+    end
+  end
+
+  defp easy_send_unpooled(config, sender, recipients, message, timeout) do
+    with {:ok, connection} <- Mua.Connection.connect(config, timeout) do
       try do
-        with {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
-             {:ok, socket, extensions} <-
-               maybe_starttls(socket, extensions, host, helo, ssl_opts, timeout),
-             :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
-             :ok <- mail_from(socket, sender, timeout),
-             :ok <- many_rcpt_to(recipients, socket, timeout),
-             {:ok, _receipt} = ok <- data(socket, message, timeout) do
-          _ = quit(socket, timeout)
+        with {:ok, _receipt} = ok <-
+               Mua.Connection.deliver(connection, sender, recipients, message, timeout) do
+          _ = Mua.Connection.quit(connection, timeout)
           ok
         end
       after
-        close(socket)
+        Mua.Connection.close(connection)
       end
     end
-  end
-
-  defp many_rcpt_to([address | addresses], socket, timeout) do
-    with :ok <- rcpt_to(socket, address, timeout), do: many_rcpt_to(addresses, socket, timeout)
-  end
-
-  defp many_rcpt_to([], _socket, _timeout), do: :ok
-
-  @spec ehlo_or_helo(socket, String.t(), timeout) :: {:ok, [String.t()]} | error
-  defp ehlo_or_helo(socket, hostname, timeout) do
-    with {:error, %Mua.SMTPError{code: 500}} <- ehlo(socket, hostname, timeout),
-         :ok <- helo(socket, hostname, timeout),
-         do: {:ok, []}
-  end
-
-  @spec maybe_starttls(
-          socket,
-          extensions,
-          host :: String.t(),
-          helo :: String.t(),
-          opts :: [:ssl.tls_client_option()],
-          timeout
-        ) :: {:ok, socket, extensions} | error
-        when extensions: [String.t()]
-  defp maybe_starttls(socket, extensions, host, helo, opts, timeout) do
-    if is_port(socket) and "STARTTLS" in extensions do
-      with {:ok, socket} <- starttls(socket, host, opts, timeout),
-           {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout) do
-        {:ok, socket, extensions}
-      end
-    else
-      {:ok, socket, extensions}
-    end
-  end
-
-  @spec maybe_auth([String.t()], socket, keyword | nil, timeout) :: :ok | error
-  defp maybe_auth(_extensions, _socket, _no_auth = nil, _timeout), do: :ok
-
-  defp maybe_auth(extensions, socket, auth_creds, timeout) do
-    method = pick_auth_method(extensions) || :plain
-    auth(socket, method, auth_creds, timeout)
   end
 
   @doc """
@@ -221,18 +189,29 @@ defmodule Mua do
         transport_mod.connect(address, port, opts, timeout)
       end
 
-    with {:ok, socket} <- connect_result,
-         {:ok, received} <- recv_all(socket, timeout) do
-      case received do
-        [220 | lines] ->
-          {:ok, socket, IO.iodata_to_binary(lines)}
+    case connect_result do
+      {:ok, socket} ->
+        try do
+          case recv_all(socket, timeout) do
+            {:ok, [220 | lines]} ->
+              {:ok, socket, IO.iodata_to_binary(lines)}
 
-        [code | lines] ->
-          :ok = close(socket)
-          smtp_error(code, lines)
-      end
-    else
-      {:error, reason} -> transport_error(reason)
+            {:ok, [code | lines]} ->
+              :ok = close(socket)
+              smtp_error(code, lines)
+
+            {:error, reason} ->
+              :ok = close(socket)
+              transport_error(reason)
+          end
+        catch
+          kind, reason ->
+            _ = close(socket)
+            :erlang.raise(kind, reason, __STACKTRACE__)
+        end
+
+      {:error, reason} ->
+        transport_error(reason)
     end
   end
 

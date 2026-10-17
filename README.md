@@ -13,7 +13,8 @@ Can be used with [Bamboo](https://github.com/ruslandoga/bamboo_mua) and [Swoosh.
 - Direct messaging (no relays)
 - Indirect messaging (relays)
 - Minimal API
-- Processless
+- Processless by default
+- Optional lazy connection pooling
 
 ## Installation
 
@@ -57,6 +58,31 @@ like and subscribe
     auth: [username: "username", password: "password"]
   )
 ```
+
+To reuse SMTP connections, start a named pool in your supervision tree and
+select it with `:pool`:
+
+```elixir
+children = [
+  {Mua.Pool, name: MyMuaPool, pool_size: 10}
+]
+
+{:ok, _receipt} =
+  Mua.easy_send(
+    "localhost",
+    "mua@github.com",
+    ["receiver@mailpit.example"],
+    message,
+    port: 1025,
+    pool: MyMuaPool
+  )
+```
+
+Pools and their connections start lazily. Each destination and connection
+configuration gets an isolated pool, so different hosts, ports, protocols,
+authentication, or TLS options never share an SMTP session. Destination pools
+stop after five idle minutes by default; set `pool_max_idle_time: :infinity` on
+`Mua.Pool` to retain them indefinitely.
 
 Low-level API:
 
