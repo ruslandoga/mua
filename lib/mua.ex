@@ -23,6 +23,18 @@ defmodule Mua do
 
   @default_timeout :timer.seconds(30)
 
+  @easy_send_option_defaults [
+    timeout: @default_timeout,
+    mx: false,
+    protocol: :tcp,
+    auth: nil,
+    port: 25,
+    tcp: [],
+    ssl: []
+  ]
+  @easy_send_option_keys Keyword.keys(@easy_send_option_defaults)
+  @auth_option_keys [:username, :password]
+
   @doc """
   Utility function to lookup MX servers for a domain.
 
@@ -69,10 +81,16 @@ defmodule Mua do
           port: 25
         )
 
+  Raises `ArgumentError` when the options are not a keyword list or contain unknown keys,
+  duplicate keys, or invalid values.
+
   """
   @spec easy_send(String.t() | :inet.ip_address(), String.t(), [String.t()], iodata, [option]) ::
           {:ok, receipt :: String.t()} | error
   def easy_send(host, sender, recipients, message, opts \\ []) do
+    opts = validate_easy_send_options!(opts)
+    validate_mx_host!(host, opts[:mx])
+
     [_, sender_hostname] = String.split(sender, "@")
 
     hosts =
@@ -83,6 +101,111 @@ defmodule Mua do
       end
 
     easy_send_any(hosts, sender_hostname, sender, recipients, message, opts)
+  end
+
+  defp validate_easy_send_options!(opts) do
+    unless Keyword.keyword?(opts) do
+      raise ArgumentError, "expected options to be a keyword list"
+    end
+
+    validate_option_keys!(opts, @easy_send_option_keys, "options")
+
+    opts = Keyword.merge(@easy_send_option_defaults, opts)
+
+    validate_timeout!(opts[:timeout])
+    validate_mx!(opts[:mx])
+    validate_protocol!(opts[:protocol])
+    validate_auth!(opts[:auth])
+    validate_port!(opts[:port])
+    validate_transport_options!(:tcp, opts[:tcp])
+    validate_transport_options!(:ssl, opts[:ssl])
+
+    opts
+  end
+
+  defp validate_option_keys!(opts, allowed_keys, context) do
+    keys = Keyword.keys(opts)
+
+    unknown_keys =
+      keys
+      |> Enum.uniq()
+      |> Enum.reject(&(&1 in allowed_keys))
+
+    duplicate_keys =
+      keys
+      |> Enum.uniq()
+      |> Enum.filter(fn key -> Enum.count(keys, &(&1 == key)) > 1 end)
+
+    if unknown_keys != [] do
+      raise ArgumentError,
+            "unknown keys #{inspect(unknown_keys)} in #{context}; " <>
+              "allowed keys are: #{inspect(allowed_keys)}"
+    end
+
+    if duplicate_keys != [] do
+      raise ArgumentError, "duplicate keys #{inspect(duplicate_keys)} in #{context}"
+    end
+  end
+
+  defp validate_timeout!(:infinity), do: :ok
+  defp validate_timeout!(timeout) when is_integer(timeout) and timeout >= 0, do: :ok
+
+  defp validate_timeout!(timeout) do
+    invalid_option!(:timeout, "a non-negative integer or :infinity", timeout)
+  end
+
+  defp validate_mx!(mx) when is_boolean(mx), do: :ok
+  defp validate_mx!(mx), do: invalid_option!(:mx, "a boolean", mx)
+
+  defp validate_protocol!(protocol) when protocol in [:tcp, :ssl], do: :ok
+  defp validate_protocol!(protocol), do: invalid_option!(:protocol, ":tcp or :ssl", protocol)
+
+  defp validate_port!(port) when is_integer(port) and port in 0..65_535, do: :ok
+  defp validate_port!(port), do: invalid_option!(:port, "an integer from 0 to 65535", port)
+
+  defp validate_transport_options!(name, opts) do
+    unless Keyword.keyword?(opts) do
+      raise ArgumentError, "invalid #{inspect(name)} option: expected a keyword list"
+    end
+  end
+
+  defp validate_auth!(nil), do: :ok
+
+  defp validate_auth!(auth) do
+    unless Keyword.keyword?(auth) do
+      raise ArgumentError,
+            "invalid :auth option: expected a keyword list with :username and :password"
+    end
+
+    validate_option_keys!(auth, @auth_option_keys, ":auth option")
+    validate_auth_credential!(auth, :username)
+    validate_auth_credential!(auth, :password)
+  end
+
+  defp validate_auth_credential!(auth, key) do
+    case Keyword.fetch(auth, key) do
+      {:ok, value} when is_binary(value) ->
+        :ok
+
+      {:ok, _value} ->
+        raise ArgumentError,
+              "invalid #{inspect(key)} in :auth option: expected a string"
+
+      :error ->
+        raise ArgumentError, "missing #{inspect(key)} in :auth option"
+    end
+  end
+
+  defp validate_mx_host!(_host, false), do: :ok
+  defp validate_mx_host!(host, true) when is_binary(host), do: :ok
+
+  defp validate_mx_host!(_host, true) do
+    raise ArgumentError, "the host must be a domain name when the :mx option is enabled"
+  end
+
+  defp invalid_option!(name, expected, value) do
+    raise ArgumentError,
+          "invalid #{inspect(name)} option: expected #{expected}, got: #{inspect(value)}"
   end
 
   defp easy_send_any([host | hosts], helo, sender, recipients, message, opts) do
@@ -111,11 +234,11 @@ defmodule Mua do
   # TODO build %Mua.Result{} with what has happened on the connection (tls or not, etc.)
 
   defp easy_send_one(host, helo, sender, recipients, message, opts) do
-    port = opts[:port] || 25
-    proto = opts[:protocol] || :tcp
-    timeout = opts[:timeout] || @default_timeout
-    sock_opts = opts[proto] || []
-    ssl_opts = opts[:ssl] || []
+    port = opts[:port]
+    proto = opts[:protocol]
+    timeout = opts[:timeout]
+    sock_opts = opts[proto]
+    ssl_opts = opts[:ssl]
     auth_creds = opts[:auth]
 
     with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
