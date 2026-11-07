@@ -11,7 +11,8 @@ on:
 jobs:
   test:
     name: "test (Elixir ${{ matrix.elixir }} / OTP ${{ matrix.otp }}${{ matrix.dialyzer && ' / Dialyzer' || '' }}${{ matrix.lint && ' / Lint' || '' }})"
-    runs-on: ubuntu-latest
+    # Keep OTP 24 coverage: Ubuntu 26.04 has no prebuilt OTP 24 packages.
+    runs-on: ubuntu-24.04
 
     env:
       MIX_ENV: test
