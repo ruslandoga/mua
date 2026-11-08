@@ -9,14 +9,17 @@ defmodule Mua do
 
   @type host :: :inet.socket_address() | :inet.hostname() | String.t()
   @type socket :: :gen_tcp.socket() | :ssl.sslsocket()
-  @type error :: {:error, Mua.SMTPError.t() | Mua.TransportError.t()}
+  @type error ::
+          {:error, Mua.ProtocolError.t() | Mua.SMTPError.t() | Mua.TransportError.t()}
   @type auth_method :: :login | :plain
   @type auth_credentials :: [username: String.t(), password: String.t()]
+  @type starttls_policy :: :always | :if_available | :never
   @type option ::
           {:timeout, timeout}
           | {:mx, boolean}
           | {:protocol, :tcp | :ssl}
           | {:auth, auth_credentials}
+          | {:starttls, starttls_policy}
           | {:port, :inet.port_number()}
           | {:tcp, [:gen_tcp.connect_option()]}
           | {:ssl, [:ssl.tls_client_option()]}
@@ -69,10 +72,26 @@ defmodule Mua do
           port: 25
         )
 
+  The `:starttls` option controls STARTTLS for TCP connections:
+
+    * `:always` requires STARTTLS to be advertised and successfully negotiated.
+    * `:if_available` negotiates STARTTLS when the server advertises it.
+    * `:never` does not attempt STARTTLS.
+
+  Connections with authentication credentials default to `starttls: :always`.
+  Other TCP connections default to `starttls: :if_available`. Connections using
+  `protocol: :ssl` are already encrypted and do not use STARTTLS.
+
+  Using `starttls: :if_available` or `starttls: :never` with authentication may
+  expose credentials over a plaintext TCP connection and must be an explicit
+  choice. Once a server advertises STARTTLS, a rejected command or failed
+  handshake is returned as an error and never downgraded to plaintext.
+
   """
   @spec easy_send(String.t() | :inet.ip_address(), String.t(), [String.t()], iodata, [option]) ::
           {:ok, receipt :: String.t()} | error
   def easy_send(host, sender, recipients, message, opts \\ []) do
+    opts = Keyword.put(opts, :starttls, starttls_policy(opts))
     [_, sender_hostname] = String.split(sender, "@")
 
     hosts =
@@ -98,6 +117,13 @@ defmodule Mua do
       {:error, %Mua.SMTPError{}} = error ->
         error
 
+      # capability policies can be retried before any credentials are sent
+      {:error, %Mua.ProtocolError{}} when hosts != [] ->
+        easy_send_any(hosts, helo, sender, recipients, message, opts)
+
+      {:error, %Mua.ProtocolError{}} = error ->
+        error
+
       # transport errors can be retried
       {:error, %Mua.TransportError{}} when hosts != [] ->
         easy_send_any(hosts, helo, sender, recipients, message, opts)
@@ -117,12 +143,22 @@ defmodule Mua do
     sock_opts = opts[proto] || []
     ssl_opts = opts[:ssl] || []
     auth_creds = opts[:auth]
+    starttls_policy = opts[:starttls]
 
     with {:ok, socket, _banner} <- connect(proto, host, port, sock_opts, timeout) do
       try do
         with {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout),
              {:ok, socket, extensions} <-
-               maybe_starttls(socket, extensions, host, helo, ssl_opts, timeout),
+               maybe_starttls(
+                 proto,
+                 socket,
+                 extensions,
+                 host,
+                 helo,
+                 ssl_opts,
+                 starttls_policy,
+                 timeout
+               ),
              :ok <- maybe_auth(extensions, socket, auth_creds, timeout),
              :ok <- mail_from(socket, sender, timeout),
              :ok <- many_rcpt_to(recipients, socket, timeout),
@@ -142,6 +178,19 @@ defmodule Mua do
 
   defp many_rcpt_to([], _socket, _timeout), do: :ok
 
+  defp starttls_policy(opts) do
+    default = if opts[:auth], do: :always, else: :if_available
+
+    case Keyword.get(opts, :starttls, default) do
+      policy when policy in [:always, :if_available, :never] ->
+        policy
+
+      policy ->
+        raise ArgumentError,
+              "expected :starttls to be :always, :if_available, or :never, got: #{inspect(policy)}"
+    end
+  end
+
   @spec ehlo_or_helo(socket, String.t(), timeout) :: {:ok, [String.t()]} | error
   defp ehlo_or_helo(socket, hostname, timeout) do
     with {:error, %Mua.SMTPError{code: 500}} <- ehlo(socket, hostname, timeout),
@@ -150,22 +199,36 @@ defmodule Mua do
   end
 
   @spec maybe_starttls(
+          protocol :: :tcp | :ssl,
           socket,
           extensions,
           host :: String.t(),
           helo :: String.t(),
           opts :: [:ssl.tls_client_option()],
+          starttls_policy,
           timeout
         ) :: {:ok, socket, extensions} | error
         when extensions: [String.t()]
-  defp maybe_starttls(socket, extensions, host, helo, opts, timeout) do
-    if is_port(socket) and "STARTTLS" in extensions do
-      with {:ok, socket} <- starttls(socket, host, opts, timeout),
-           {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout) do
+  defp maybe_starttls(:ssl, socket, extensions, _host, _helo, _opts, _policy, _timeout) do
+    {:ok, socket, extensions}
+  end
+
+  defp maybe_starttls(:tcp, socket, extensions, host, helo, opts, policy, timeout) do
+    cond do
+      policy == :never ->
         {:ok, socket, extensions}
-      end
-    else
-      {:ok, socket, extensions}
+
+      extension?(extensions, "STARTTLS") ->
+        with {:ok, socket} <- starttls(socket, host, opts, timeout),
+             {:ok, extensions} <- ehlo_or_helo(socket, helo, timeout) do
+          {:ok, socket, extensions}
+        end
+
+      policy == :always ->
+        protocol_error(:starttls_required)
+
+      true ->
+        {:ok, socket, extensions}
     end
   end
 
@@ -173,8 +236,10 @@ defmodule Mua do
   defp maybe_auth(_extensions, _socket, _no_auth = nil, _timeout), do: :ok
 
   defp maybe_auth(extensions, socket, auth_creds, timeout) do
-    method = pick_auth_method(extensions) || :plain
-    auth(socket, method, auth_creds, timeout)
+    case pick_auth_method(extensions) do
+      nil -> protocol_error(:auth_not_supported)
+      method -> auth(socket, method, auth_creds, timeout)
+    end
   end
 
   @doc """
@@ -345,19 +410,33 @@ defmodule Mua do
   """
   @spec pick_auth_method([String.t()]) :: auth_method | nil
   def pick_auth_method(extensions) when is_list(extensions) do
-    auth_extension = Enum.find(extensions, &String.starts_with?(&1, "AUTH "))
+    case extension_params(extensions, "AUTH") do
+      nil ->
+        nil
 
-    if auth_extension do
-      ["AUTH" | methods] = String.split(auth_extension)
-
-      Enum.find_value(methods, fn method ->
-        case String.upcase(method) do
-          "PLAIN" -> :plain
-          "LOGIN" -> :login
-          _other -> nil
-        end
-      end)
+      methods ->
+        Enum.find_value(methods, fn method ->
+          case String.upcase(method) do
+            "PLAIN" -> :plain
+            "LOGIN" -> :login
+            _other -> nil
+          end
+        end)
     end
+  end
+
+  defp extension?(extensions, name), do: extension_params(extensions, name) != nil
+
+  defp extension_params(extensions, name) do
+    Enum.find_value(extensions, fn extension ->
+      case String.split(extension) do
+        [keyword | params] ->
+          if String.upcase(keyword) == name, do: params
+
+        [] ->
+          nil
+      end
+    end)
   end
 
   @doc """
@@ -365,6 +444,10 @@ defmodule Mua do
 
       :ok = auth(socket, :login, username: username, password: password)
       :ok = auth(socket, :plain, username: username, password: password)
+
+  This low-level function does not negotiate TLS or check the server's advertised
+  mechanisms. Use a method from the latest EHLO response and an encrypted socket
+  unless sending credentials over plaintext is explicitly acceptable.
 
   """
   @spec auth(socket, auth_method, auth_credentials, timeout) :: :ok | error
@@ -573,6 +656,11 @@ defmodule Mua do
   @compile inline: [transport_error: 1]
   defp transport_error(reason) do
     {:error, Mua.TransportError.exception(reason: reason)}
+  end
+
+  @compile inline: [protocol_error: 1]
+  defp protocol_error(reason) do
+    {:error, Mua.ProtocolError.exception(reason: reason)}
   end
 
   # TODO implement proper RFC2822
