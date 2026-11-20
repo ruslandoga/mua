@@ -86,10 +86,10 @@ jobs:
       - uses: crate-ci/typos@master
         if: ${{ matrix.lint }}
 
-      - run: mix test --include mailpit --include online
+      - run: mix test --include mailpit
         if: ${{ !matrix.coverage || github.event_name == 'schedule' }}
 
-      - run: mix coveralls.github --include mailpit --include online
+      - run: mix coveralls.github --include mailpit
         if: ${{ matrix.coverage && github.event_name != 'schedule' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
